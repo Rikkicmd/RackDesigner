@@ -11,6 +11,9 @@ Rack Designer is **one HTML file** that runs in any modern browser. There is not
 - [Getting started](#getting-started)
 - [Features](#features)
   - [Drawing a rack](#drawing-a-rack)
+  - [Front and back](#front-and-back)
+  - [Power: UPS, PDUs and 0U PDUs](#power-ups-pdus-and-0u-pdus)
+  - [C•CURE IP-ACM drawer](#ccure-ip-acm-drawer)
   - [Allocating ports](#allocating-ports)
   - [Hover pop-ups](#hover-pop-ups)
   - [Colouring ports](#colouring-ports)
@@ -45,6 +48,40 @@ That's it. Your work is kept in the browser as you go, and **Save file** writes 
 - Every device gets an automatic label (`PP-01`, `SW-02`, `NVR-01`…) that you can change, plus model, IP address, serial number, colour and notes.
 - The right-hand panel shows the rack's U used and free, ports in use and free, and a list of everything in the rack from top to bottom.
 - **Undo and redo** for every change (up to 80 steps).
+
+### Front and back
+
+The **Front / Back** switch above the rack turns it round. The back view is drawn as you'd see it standing behind the cabinet, so left and right swap: a half-width unit on the left at the front is on the right at the back, and kit on a shelf runs the other way.
+
+- Ports that are on the back of the real kit are only on the back view: server and NVR network and iDRAC ports, the Zenitel ICX Ethernet and console ports, UPS outlets and network card, KVM ports, and every power inlet.
+- Patch leads are drawn on the view that shows both ends. Picking a port from the port table, a patch link or the panel turns the rack round if it's on the other side.
+- Designs saved before the back view existed are moved across when they're opened: catalogue kit gets its back ports put on the back.
+
+![The back of the example rack: power inlets, UPS outlets, server NICs and two 0U PDUs at the sides](docs/screenshots/rear-view.png)
+
+### Power: UPS, PDUs and 0U PDUs
+
+- Every powered device has **power inlets** on the back (one or two PSUs, set in its details, up to four). Servers and Avigilon Premium recorders have two.
+- The **Power** section of a device's details has a box for each inlet: choose the UPS or PDU outlet that feeds it. Outlets already feeding something say what. The power lead is drawn on the back view and the cable schedule lists it.
+- A UPS or PDU shows an **Outlets** list: what each outlet feeds. Click one to edit it. A PDU's own input can be fed from a UPS outlet.
+- **Vertical 0U PDUs** (16 way, or 20 × C13 + 4 × C19) hang at the back, at the sides of the cabinet. Two fit on each side, top and bottom. Adding one turns the rack to the back view. Set the side in its details; Up and Down swap the two on a side.
+- The Excel workbook has a **Power** sheet and the PDF a **Power schedule** page: every inlet and the outlet that feeds it.
+
+![Choosing the outlet that feeds each PSU](docs/screenshots/power-panel.png)
+
+### C•CURE IP-ACM drawer
+
+The **IP-ACM pull-out drawer** is 2U and holds six Software House IP-ACM v2 door modules.
+
+- Click an empty slot on the drawer front (**+ IP-ACM**), or add an IP-ACM from the list: it goes in the selected drawer, or the first with a free slot, or a new drawer if there isn't one.
+- Each IP-ACM has its two Ethernet ports (ETH1 with PoE, ETH2), an IP address, serial number and notes, and can be patched like any other kit.
+- **Labelling**: each board has a window on the drawer front showing its slot number, label and label text (e.g. the door it controls). Set them in the drawer's details, where all six slots are listed with their label and label text, or in the IP-ACM's own details. Use a new line, or ` / ` in the drawer list, to start a new line on the label.
+- **Show it open** draws the drawer pulled out with the boards showing; **Show it shut** goes back to the label windows.
+- Move a board to another slot from its **Slot** box, or with Left / Right. The label text is in the *Rack layout* sheet.
+
+I couldn't find a Software House part number for a six-board 2U drawer, so it's drawn as a plain drawer with label windows.
+
+![An IP-ACM drawer with four labelled boards and two empty slots](docs/screenshots/acm-drawer.png)
 
 ### Allocating ports
 
@@ -109,9 +146,9 @@ Everything is under the **Export** button.
 
 | Export | What you get |
 | --- | --- |
-| **Excel workbook (.xlsx)** | Three sheets: *Port allocation* (every port, all 16 columns), *Cable schedule* (one row per patch lead: cable ID, both ends, type, colour, VLAN) and *Rack layout* (every device with U, height, label, kit, model, IP, serial and ports used). |
+| **Excel workbook (.xlsx)** | Four sheets: *Port allocation* (every port, all 16 columns), *Cable schedule* (one row per patch lead: cable ID, both ends, type, colour, VLAN), *Rack layout* (every device with U, height, label, label text, kit, model, IP, serial and ports used) and *Power* (every power inlet and the outlet feeding it). |
 | **CSV (.csv)** | The port allocation table, ready for any spreadsheet or import. |
-| **PDF: rack layouts and port tables** | A landscape A3 report: each rack drawn next to its device list, then the full port allocation table, then the cable schedule. |
+| **PDF: rack layouts and port tables** | A landscape A3 report: each rack drawn front and back next to its device list, then the full port allocation table, the power schedule and the cable schedule. |
 
 Tick **Include free ports in tables** to list unused ports as well.
 
@@ -119,10 +156,11 @@ Tick **Include free ports in tables** to list unused ports as well.
 
 | Export | What you get |
 | --- | --- |
-| **This rack as PNG** | A high-resolution picture of the current rack with all ports and patch leads. |
-| **This rack as SVG** | The same as a vector drawing, for CAD, Visio or documents. |
+| **This rack as PNG** | A high-resolution picture of the side of the rack showing, with all ports and patch leads. |
+| **This rack, front and back (PNG)** | Front and back side by side. |
+| **This rack as SVG** | The side showing as a vector drawing, for CAD, Visio or documents. |
 | **All racks side by side (PNG)** | Every rack in the project in one picture. |
-| **This rack as PDF (picture only)** | Just the rack drawing on a page. |
+| **This rack, front and back (PDF)** | Just the rack drawings on an A3 page. |
 
 Examples of every export made from the built-in example project are in [`examples/`](examples/).
 
@@ -161,13 +199,17 @@ Allied Telesis switches and Zenitel ICX units are drawn like their real front pa
 
 - **x530**: 1G copper ports, then the multi-gig ports (100M/1/2.5/5G, marked with a blue line), SFP+ cages two high, and the management panel with the console port, management port, USB, eco-friendly button and switch ID LED. Ports are numbered odd on top, even underneath.
 - **x230**: 1G copper and SFP ports with the console on the front. The 10 and 18 port models have a narrower body, drawn in a rack-mount kit at their real width.
-- **Zenitel ICX**: the 162 mm unit on its rack shelf, with the power, status, fault, active and link LEDs on the front. Its Ethernet and console ports are on the back, and are shown in an "on the back" box so they can still be patched.
+- **Zenitel ICX**: the 162 mm unit on its rack shelf, with the power, status, fault, active and link LEDs on the front. Its Ethernet, console and DC input are on the back view.
+- **Avigilon NVR5**: Value (1U, 4 bays), Standard (2U, 10 bays) and Premium 96-160 TB, 192-224 TB and 252-432 TB (2U). The front is the bezel over the drive bays with the Avigilon name, power button and status lights. At the back are the 1G and 10G SFP+ network ports, iDRAC and one or two PSUs, as in the NVR5 datasheet. Only the front-facing drive bays are drawn on the bigger Premium models.
+- **Rack UPS** (Smart-UPS style, SMT1500 / SMT2200 / SMT3000 2U and SRT 5 kVA 3U): vented front with the display and buttons; outlets (C13 and C19), network card slot and input on the back. Outlet counts are typical for those models, so check them against the one you have.
 - Patched ports show a green link light. The Allied Telesis wordmark and model are written on each switch.
 - Change a switch or ICX to another model from its **Model** box. Allocations move across to the ports with the same name and type, and you're asked first if any would be lost.
 
-Port counts and positions come from Allied Telesis's x530 installation guide and x230 datasheet and Zenitel's ICX-500 installation manual. The x530-10GHXm, x530-18GHXm and x530L layouts weren't in those documents, so check them against the real kit.
+Port counts and positions come from Allied Telesis's x530 installation guide and x230 datasheet, Zenitel's ICX-500 installation manual and Avigilon's NVR5 datasheet. The x530-10GHXm, x530-18GHXm and x530L layouts weren't in those documents, so check them against the real kit.
 
 ![Allied Telesis and Zenitel faceplates](docs/screenshots/faceplates.png)
+
+![Avigilon NVR5 recorders and rack UPS fronts](docs/screenshots/avigilon-ups.png)
 
 | Group | Kit |
 | --- | --- |
@@ -175,13 +217,15 @@ Port counts and positions come from Allied Telesis's x530 installation guide and
 | **Allied Telesis switches** | x530-28GPXm, x530-28GTXm, x530-52GPXm, x530-52GTXm, x530-18GHXm, x530-10GHXm, x530L-28GPX, x530L-52GPX, x230-28GP, x230-28GT, x230-18GP, x230-18GT, x230-10GP, x230-10GT, x230L-17GT, x230L-26GT |
 | **Other switches and network** | Generic 24 + 4 SFP and 48 + 4 SFP switches; router / firewall; media converter chassis |
 | **Zenitel** | ICX-500, ICX-510, ICX-510-IA (half width, two side by side on an IA-RS1 shelf) |
-| **Servers and recorders** | C•CURE 9000 server, Avigilon NVR server, NVR / recorder, 1U and 2U servers (with iDRAC), KVM terminal |
-| **Power** | UPS 2U and 3U (each with a network card port and 8 outlets), PDU 8 way |
+| **C•CURE / Software House** | IP-ACM pull-out drawer (2U, six boards), IP-ACM v2 door module |
+| **Avigilon recorders** | NVR5 Value, NVR5 Standard, NVR5 Premium 96-160 TB, 192-224 TB and 252-432 TB |
+| **Servers and recorders** | C•CURE 9000 server, NVR server 2U, NVR / recorder, 1U and 2U servers (with iDRAC), KVM terminal |
+| **Power** | Rack UPS (SMT1500, SMT2200, SMT3000 2U and SRT 5 kVA 3U style), PDU 8 way 1U, vertical 0U PDU 16 way, vertical 0U PDU 20 × C13 + 4 × C19 |
 | **Accessories and shelves** | Cable manager, brush plate, blanking plate, shelves (1U, 2U, 3U), fan tray |
 | **Shelf kit** (sits on a shelf) | Desktop NVR with 8 PoE, desktop 8 port switch, router / modem, mini PC / workstation, power supply, media converter, small device |
 | **Custom** | A custom device with whatever ports you give it |
 
-Port types are RJ45, SFP, SFP+, LC duplex, SC, console and power outlet. Ports are numbered the way the real kit is (switches zig-zag top/bottom, panels run left to right) and can have prefixes such as `NIC`, `LAN`, `OUT` or `CH`.
+Port types are RJ45, SFP, SFP+, LC duplex, SC, console, power outlet and power inlet. Ports are numbered the way the real kit is (switches zig-zag top/bottom, panels run left to right) and can have prefixes such as `NIC`, `LAN`, `OUT` or `CH`.
 
 Search the library with the box at the top.
 
@@ -192,8 +236,8 @@ Search the library with the box at the top.
 | Ctrl+Z / Cmd+Z | Undo |
 | Ctrl+Y, Ctrl+Shift+Z | Redo |
 | Ctrl+S / Cmd+S | Save file |
-| ↑ / ↓ | Move the selected device up or down 1U |
-| ← / → | With a port selected: previous / next port. With shelf kit selected: slide it along the shelf |
+| ↑ / ↓ | Move the selected device up or down 1U (a 0U PDU: swap with the other one on that side) |
+| ← / → | With a port selected: previous / next port. With shelf kit or an IP-ACM selected: slide it along the shelf or to the next drawer slot |
 | Delete / Backspace | Delete the selected device (Ctrl+Z brings it back) |
 | Esc | Cancel picking, then clear the port, then the device selection |
 
@@ -203,7 +247,7 @@ The app is written as plain HTML, CSS and JavaScript in `src/`, with no framewor
 
 ```sh
 python3 -I build.py
-# built dist/system-draw-rack-designer.html 580894 bytes
+# built dist/system-draw-rack-designer.html 626054 bytes
 ```
 
 Python 3.8 or newer is all you need. GitHub Actions runs the build on every push to `main`, checks that the committed `dist/` file matches the source, and uploads the built page as a downloadable artifact.

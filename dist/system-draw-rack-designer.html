@@ -288,6 +288,17 @@ table.pt td.mut { color: var(--ink3); }
 .pcard input { width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); padding: 0 8px; font-size: 16px; }
 .pcard .full { grid-column: 1 / -1; }
 .pcard .go { border: 0; background: none; color: var(--brand); font-weight: 600; cursor: pointer; font-family: PlexMono, ui-monospace, Consolas, monospace; }
+
+/* IP-ACM drawer slots */
+.acms { display: grid; gap: 6px; margin-bottom: 10px; }
+.acmrow { display: grid; grid-template-columns: 22px minmax(0, .8fr) minmax(0, 1.2fr) auto; gap: 6px; align-items: center; }
+.acmrow.empty { grid-template-columns: 22px 1fr auto; }
+.acmrow .u { color: var(--ink3); font-size: 12px; text-align: center; }
+.acmrow input { min-width: 0; width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
+.acmrow .note { margin: 0; }
+svg.rack .slotadd { cursor: pointer; }
+svg.rack .slotadd:hover rect { stroke: #2fb3aa; }
+svg.rack .vslot { pointer-events: all; }
 </style>
 </head>
 <body>
@@ -308,10 +319,11 @@ table.pt td.mut { color: var(--ink3); }
         <button data-x="csv">CSV (.csv)</button>
         <button data-x="pdf">PDF: rack layouts and port tables</button>
         <div class="mh">Rack layout picture</div>
-        <button data-x="png">This rack as PNG</button>
-        <button data-x="svg">This rack as SVG</button>
+        <button data-x="png">This rack as PNG (the side showing)</button>
+        <button data-x="pngboth">This rack, front and back (PNG)</button>
+        <button data-x="svg">This rack as SVG (the side showing)</button>
         <button data-x="pngall">All racks side by side (PNG)</button>
-        <button data-x="pdfrack">This rack as PDF (picture only)</button>
+        <button data-x="pdfrack">This rack, front and back (PDF)</button>
         <label class="mchk"><input type="checkbox" id="x-free"> Include free ports in tables</label>
       </div>
     </div>
@@ -779,18 +791,31 @@ const KINDS = {
   sc: { name: 'SC', w: 1, h: 1 },
   con: { name: 'Console', w: 1, h: 1 },
   pwr: { name: 'Power outlet', w: 1.05, h: 1.05 },
+  inlet: { name: 'Power inlet', w: 1.25, h: 1 },
 };
 const g = (kind, count, o = {}) => ({ kind, count, start: 1, prefix: '', order: 'zig', name: '', ...o });
-const CATS = [['patch', 'Patch panels'], ['at', 'Allied Telesis switches'], ['network', 'Other switches and network'], ['zenitel', 'Zenitel'], ['server', 'Servers and recorders'], ['power', 'Power'], ['acc', 'Accessories and shelves'], ['onshelf', 'Shelf kit (sits on a shelf)'], ['custom', 'Custom']];
+const R = o => ({ rear: true, order: 'row', ...o });       // a port group on the back of the kit
+const CATS = [['patch', 'Patch panels'], ['at', 'Allied Telesis switches'], ['network', 'Other switches and network'], ['zenitel', 'Zenitel'], ['ccure', 'C•CURE / Software House'], ['avigilon', 'Avigilon recorders'], ['server', 'Servers and recorders'], ['power', 'Power: UPS and PDUs'], ['acc', 'Accessories and shelves'], ['onshelf', 'Shelf kit (sits on a shelf)'], ['custom', 'Custom']];
+/* Avigilon NVR5, from the NVR5 datasheet: VAL is 1U with 4 bays, one PSU; STD 2U, 10 bays; Premium 2U with 12 to 28 bays,
+   two PSUs, 1G and 10G SFP+ network ports. Network, management and power are on the back; the front is a bezel over the drives. */
+const AVG = (id, model, h, bays, cu, sfp, psu) => ({ id, cat: 'avigilon', family: 'avg', look: 'avg', name: 'Avigilon ' + model, model, h, pre: 'NVR', face: '#25292d', bays, psu,
+  groups: [g('rj45', cu, R({ prefix: 'NIC' })), ...(sfp ? [g('sfpp', sfp, R({ prefix: '10G-' }))] : []), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] });
+/* APC Smart-UPS style rack UPS: display and buttons on the front, outlets, network card slot and input on the back. */
+const UPS = (id, model, h, c13, c19) => ({ id, cat: 'power', family: 'ups', look: 'ups', name: 'UPS ' + model, model, h, pre: 'UPS', face: '#262b2f', psu: 1, pin: 'Input',
+  groups: [g('rj45', 1, R({ name: 'NMC', prefix: 'NMC' })), g('pwr', c13, R({ prefix: 'OUT' })), ...(c19 ? [g('pwr', c19, R({ prefix: 'C19-' }))] : [])] });
+/* 0U vertical PDUs hang at the back of the rack, at the sides. */
+const VPDU = (id, name, c13, c19) => ({ id, cat: 'power', name, vert: true, h: 0, pre: 'PDU', face: '#1f2326', psu: 1, pin: 'Input',
+  groups: [g('pwr', c13, { order: 'row' }), ...(c19 ? [g('pwr', c19, { order: 'row', prefix: 'C19-' })] : [])] });
+
 /* Allied Telesis switches, drawn from their front panels. x530 (from the x530 installation guide): copper ports
    1-20 / 1-40 at 1G, then multi-gig 100M/1/2.5/5G ports, then SFP+ cages two high, then the management panel with
    the console, management port, USB, eco-friendly button and switch ID LED. x230: 1G copper then SFP, console on the
    front; the 10 and 18 port bodies are narrower than 19" and sit in a rack kit (body = width in mm). */
 const MGMT = [g('con', 1, { prefix: 'CON', name: 'Console', order: 'row', panel: true }), g('rj45', 1, { prefix: 'MGMT', name: 'MGMT', order: 'row', panel: true, after: 46 })];
-const X530 = (id, model, cu, mg, sfp, o = {}) => ({ id, cat: 'at', family: 'at', look: 'at', name: 'Allied Telesis ' + model, model, h: 1, pre: 'SW', face: '#33383e', poe: /P/.test(model.slice(-4)),
+const X530 = (id, model, cu, mg, sfp, o = {}) => ({ id, cat: 'at', family: 'at', look: 'at', name: 'Allied Telesis ' + model, model, h: 1, pre: 'SW', face: '#33383e', psu: 1, poe: /P/.test(model.slice(-4)),
   groups: [...(cu ? [g('rj45', cu, { poe: /GP/.test(model) })] : []), ...(mg ? [g('rj45', mg, { start: cu + 1, mg: true, poe: /P|HX/.test(model.slice(-4)) })] : []),
     g('sfpp', sfp, { start: cu + mg + 1, rows: 2 }), ...(o.noMgmt ? [g('con', 1, { prefix: 'CON', name: 'Console', order: 'row', panel: true, after: 30 })] : MGMT)], ...o });
-const X230 = (id, model, cu, sfp, body) => ({ id, cat: 'at', family: 'at', look: 'at', name: 'Allied Telesis ' + model, model, h: 1, pre: 'SW', face: '#33383e', body,
+const X230 = (id, model, cu, sfp, body) => ({ id, cat: 'at', family: 'at', look: 'at', name: 'Allied Telesis ' + model, model, h: 1, pre: 'SW', face: '#33383e', psu: 1, body,
   groups: [g('rj45', cu, { poe: /GP/.test(model) }), g('sfp', sfp, { start: cu + 1, rows: sfp >= 4 ? 2 : 1 }), g('con', 1, { prefix: 'CON', name: 'Console', order: 'row', panel: true, after: 22 })] });
 const CATALOG = [
   { id: 'cat6-24', cat: 'patch', name: 'Cat6 patch panel, 24 port', h: 1, pre: 'PP', face: '#1c2023', groups: [g('rj45', 24, { order: 'row' })] },
@@ -815,36 +840,50 @@ const CATALOG = [
   X230('x230-10t', 'x230-10GT', 8, 2, 263),
   X230('x230l-17', 'x230L-17GT', 16, 1, 341),
   X230('x230l-26', 'x230L-26GT', 24, 2, 341),
-  { id: 'sw-24', cat: 'network', name: 'Switch, 24 + 4 SFP', h: 1, pre: 'SW', face: '#2b3238', groups: [g('rj45', 24), g('sfp', 4, { start: 25 })] },
-  { id: 'sw-48', cat: 'network', name: 'Switch, 48 + 4 SFP', h: 1, pre: 'SW', face: '#2b3238', groups: [g('rj45', 48), g('sfp', 4, { start: 49 })] },
-  { id: 'fw', cat: 'network', name: 'Router / firewall', h: 1, pre: 'FW', face: '#33302b', groups: [g('rj45', 8, { order: 'row', prefix: 'P' }), g('sfp', 2, { prefix: 'X', order: 'row' })] },
-  { id: 'mc', cat: 'network', name: 'Media converter chassis', h: 1, pre: 'MC', face: '#2e3237', groups: [g('rj45', 8, { order: 'row', prefix: 'T' }), g('lc', 8, { order: 'row', prefix: 'F' })] },
-  { id: 'ccure', cat: 'server', name: 'C•CURE 9000 server', h: 1, pre: 'SRV', face: '#30373d', groups: [g('rj45', 2, { prefix: 'NIC', order: 'row' }), g('rj45', 1, { name: 'iDRAC', prefix: 'iDRAC', order: 'row' })] },
-  { id: 'avg', cat: 'server', name: 'Avigilon NVR server', h: 2, pre: 'NVR', face: '#2f363c', groups: [g('rj45', 4, { prefix: 'NIC', order: 'row' }), g('rj45', 1, { name: 'BMC', prefix: 'BMC', order: 'row' })] },
-  { id: 'nvr', cat: 'server', name: 'NVR / recorder', h: 2, pre: 'NVR', face: '#2f363c', groups: [g('rj45', 2, { prefix: 'LAN', order: 'row' })] },
-  { id: 'srv1', cat: 'server', name: 'Server, 1U', h: 1, pre: 'SRV', face: '#30373d', groups: [g('rj45', 4, { prefix: 'NIC', order: 'row' }), g('rj45', 1, { name: 'iDRAC', prefix: 'iDRAC', order: 'row' })] },
-  { id: 'srv2', cat: 'server', name: 'Server, 2U', h: 2, pre: 'SRV', face: '#30373d', groups: [g('rj45', 4, { prefix: 'NIC', order: 'row' }), g('rj45', 1, { name: 'iDRAC', prefix: 'iDRAC', order: 'row' })] },
-  ...[['icx', 'ICX-500', '100M'], ['icx510', 'ICX-510', '1G'], ['icx510ia', 'ICX-510-IA', '1G']].map(([id, model, spd]) => ({ id, cat: 'zenitel', family: 'icx', look: 'icx', name: 'Zenitel ' + model, model, h: 1, pre: 'ICX', face: '#2a2d31', half: true, sw: 50, speed: spd,
+  { id: 'sw-24', cat: 'network', name: 'Switch, 24 + 4 SFP', h: 1, pre: 'SW', face: '#2b3238', psu: 1, groups: [g('rj45', 24), g('sfp', 4, { start: 25 })] },
+  { id: 'sw-48', cat: 'network', name: 'Switch, 48 + 4 SFP', h: 1, pre: 'SW', face: '#2b3238', psu: 1, groups: [g('rj45', 48), g('sfp', 4, { start: 49 })] },
+  { id: 'fw', cat: 'network', name: 'Router / firewall', h: 1, pre: 'FW', face: '#33302b', psu: 1, groups: [g('rj45', 8, { order: 'row', prefix: 'P' }), g('sfp', 2, { prefix: 'X', order: 'row' })] },
+  { id: 'mc', cat: 'network', name: 'Media converter chassis', h: 1, pre: 'MC', face: '#2e3237', psu: 1, groups: [g('rj45', 8, { order: 'row', prefix: 'T' }), g('lc', 8, { order: 'row', prefix: 'F' })] },
+  { id: 'ccure', cat: 'server', name: 'C•CURE 9000 server', h: 1, pre: 'SRV', face: '#30373d', psu: 2, groups: [g('rj45', 2, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] },
+  AVG('avg5-val', 'NVR5 Value', 1, 4, 2, 0, 1),
+  AVG('avg5-std', 'NVR5 Standard', 2, 10, 2, 1, 1),
+  AVG('avg5-prm', 'NVR5 Premium 96-160TB', 2, 12, 6, 2, 2),
+  AVG('avg5-prm2', 'NVR5 Premium 192-224TB', 2, 18, 4, 4, 2),
+  AVG('avg5-prm3', 'NVR5 Premium 252-432TB', 2, 28, 4, 2, 2),
+  { id: 'avg', cat: 'server', name: 'NVR server, 2U', h: 2, pre: 'NVR', face: '#2f363c', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'BMC', prefix: 'BMC' }))] },
+  { id: 'nvr', cat: 'server', name: 'NVR / recorder', h: 2, pre: 'NVR', face: '#2f363c', psu: 1, groups: [g('rj45', 2, R({ prefix: 'LAN' }))] },
+  { id: 'srv1', cat: 'server', name: 'Server, 1U', h: 1, pre: 'SRV', face: '#30373d', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] },
+  { id: 'srv2', cat: 'server', name: 'Server, 2U', h: 2, pre: 'SRV', face: '#30373d', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] },
+  ...[['icx', 'ICX-500', '100M'], ['icx510', 'ICX-510', '1G'], ['icx510ia', 'ICX-510-IA', '1G']].map(([id, model, spd]) => ({ id, cat: 'zenitel', family: 'icx', look: 'icx', name: 'Zenitel ' + model, model, h: 1, pre: 'ICX', face: '#2a2d31', half: true, sw: 50, speed: spd, psu: 1, pin: 'DC in',
     groups: [g('rj45', 2, { prefix: 'ETH', start: 0, order: 'row', rear: true }), g('con', 1, { prefix: 'CON', name: 'Console', order: 'row', rear: true })] })),
-  { id: 'kvm', cat: 'server', name: 'KVM terminal', h: 1, pre: 'KVM', face: '#2c3034', groups: [g('rj45', 8, { prefix: 'CH', order: 'row' }), g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' })] },
-  { id: 'ups2', cat: 'power', name: 'UPS, 2U', h: 2, pre: 'UPS', face: '#262b2f', groups: [g('rj45', 1, { name: 'NMC', prefix: 'NMC', order: 'row' }), g('pwr', 8, { prefix: 'OUT', order: 'row' })] },
-  { id: 'ups3', cat: 'power', name: 'UPS, 3U', h: 3, pre: 'UPS', face: '#262b2f', groups: [g('rj45', 1, { name: 'NMC', prefix: 'NMC', order: 'row' }), g('pwr', 8, { prefix: 'OUT', order: 'row' })] },
-  { id: 'pdu', cat: 'power', name: 'PDU, 8 way', h: 1, pre: 'PDU', face: '#1f2326', groups: [g('pwr', 8, { order: 'row' })] },
+  /* Software House IP-ACM v2: one door, two readers, a PoE Ethernet port and a second Ethernet port. The 2U pull-out drawer holds six. */
+  { id: 'acm-drawer', cat: 'ccure', name: 'IP-ACM pull-out drawer, 2U (6 boards)', model: 'IP-ACM drawer', h: 2, pre: 'ACD', face: '#2a2f33', groups: [], art: 'drawer', slots: 6, holds: 'acm' },
+  { id: 'ipacm', cat: 'ccure', name: 'IP-ACM v2 door module (in a drawer)', model: 'IP-ACM v2', h: 1, pre: 'ACM', face: '#1f6b46', acm: true, sw: 100 / 6, psu: 0,
+    groups: [g('rj45', 1, { name: 'ETH1 (PoE)', prefix: 'ETH', order: 'row', poe: true }), g('rj45', 1, { name: 'ETH2', prefix: 'ETH', start: 2, order: 'row' })] },
+  { id: 'kvm', cat: 'server', name: 'KVM terminal', h: 1, pre: 'KVM', face: '#2c3034', psu: 1, groups: [g('rj45', 8, R({ prefix: 'CH' })), g('rj45', 1, R({ name: 'LAN', prefix: 'LAN' }))] },
+  UPS('ups2', 'SMT2200RMI2U style, 2U', 2, 8, 1),
+  UPS('ups3', 'SMT3000RMI2U style, 2U', 2, 8, 1),
+  UPS('ups1', 'SMT1500RMI2U style, 2U', 2, 4, 0),
+  UPS('ups5', 'SRT5KRMXLI style, 3U', 3, 6, 4),
+  { id: 'pdu', cat: 'power', name: 'PDU, 8 way, 1U', h: 1, pre: 'PDU', face: '#1f2326', psu: 1, pin: 'Input', groups: [g('pwr', 8, { order: 'row' })] },
+  VPDU('vpdu-16', 'Vertical PDU, 0U, 16 way', 16, 0),
+  VPDU('vpdu-24', 'Vertical PDU, 0U, 20 × C13 + 4 × C19', 20, 4),
+
   { id: 'cm', cat: 'acc', name: 'Cable manager', h: 1, pre: 'CM', face: '#25292c', groups: [], art: 'cm' },
   { id: 'brush', cat: 'acc', name: 'Brush plate', h: 1, pre: 'BP', face: '#25292c', groups: [], art: 'brush' },
   { id: 'blank', cat: 'acc', name: 'Blanking plate', h: 1, pre: 'BL', face: '#2a2e31', groups: [], art: 'blank' },
   { id: 'shelf', cat: 'acc', name: 'Shelf, 2U (kit sits on it)', h: 2, pre: 'SH', face: '#1d2124', groups: [], art: 'shelf' },
   { id: 'shelf1', cat: 'acc', name: 'Shelf, 1U', h: 1, pre: 'SH', face: '#1d2124', groups: [], art: 'shelf' },
   { id: 'shelf3', cat: 'acc', name: 'Shelf, 3U', h: 3, pre: 'SH', face: '#1d2124', groups: [], art: 'shelf' },
-  { id: 'fan', cat: 'acc', name: 'Fan tray', h: 1, pre: 'FAN', face: '#2a2e31', groups: [], art: 'fan' },
-  { id: 'desk-nvr', cat: 'onshelf', name: 'Desktop NVR, 8 PoE', h: 1, pre: 'NVR', face: '#2f363c', sw: 36, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' }), g('rj45', 8, { prefix: 'PoE', order: 'row' })] },
-  { id: 'desk-sw', cat: 'onshelf', name: 'Desktop switch, 8 port', h: 1, pre: 'SW', face: '#2b3238', sw: 26, groups: [g('rj45', 8, { order: 'row' })] },
-  { id: 'router', cat: 'onshelf', name: 'Router / modem', h: 1, pre: 'RTR', face: '#33302b', sw: 22, groups: [g('rj45', 1, { name: 'WAN', prefix: 'WAN', order: 'row' }), g('rj45', 4, { prefix: 'LAN', order: 'row' })] },
-  { id: 'minipc', cat: 'onshelf', name: 'Mini PC / workstation', h: 1, pre: 'PC', face: '#30373d', sw: 16, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' })] },
-  { id: 'psu-box', cat: 'onshelf', name: 'Power supply (PSU)', h: 1, pre: 'PSU', face: '#262b2f', sw: 22, groups: [g('pwr', 4, { prefix: 'OUT', order: 'row' })] },
-  { id: 'mc1', cat: 'onshelf', name: 'Media converter', h: 1, pre: 'MC', face: '#2e3237', sw: 13, groups: [g('rj45', 1, { name: 'TX', prefix: 'TX', order: 'row' }), g('lc', 1, { name: 'FX', prefix: 'FX', order: 'row' })] },
-  { id: 'box', cat: 'onshelf', name: 'Small device', h: 1, pre: 'DEV', face: '#353b40', sw: 20, groups: [g('rj45', 2, { order: 'row' })] },
-  { id: 'custom', cat: 'custom', name: 'Custom device', h: 1, pre: 'DEV', face: '#353b40', groups: [g('rj45', 4, { order: 'row' })] },
+  { id: 'fan', cat: 'acc', name: 'Fan tray', h: 1, pre: 'FAN', face: '#2a2e31', psu: 1, groups: [], art: 'fan' },
+  { id: 'desk-nvr', cat: 'onshelf', name: 'Desktop NVR, 8 PoE', h: 1, pre: 'NVR', face: '#2f363c', sw: 36, psu: 1, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' }), g('rj45', 8, { prefix: 'PoE', order: 'row' })] },
+  { id: 'desk-sw', cat: 'onshelf', name: 'Desktop switch, 8 port', h: 1, pre: 'SW', face: '#2b3238', sw: 26, psu: 1, groups: [g('rj45', 8, { order: 'row' })] },
+  { id: 'router', cat: 'onshelf', name: 'Router / modem', h: 1, pre: 'RTR', face: '#33302b', sw: 22, psu: 1, groups: [g('rj45', 1, { name: 'WAN', prefix: 'WAN', order: 'row' }), g('rj45', 4, { prefix: 'LAN', order: 'row' })] },
+  { id: 'minipc', cat: 'onshelf', name: 'Mini PC / workstation', h: 1, pre: 'PC', face: '#30373d', sw: 16, psu: 1, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' })] },
+  { id: 'psu-box', cat: 'onshelf', name: 'Power supply (PSU)', h: 1, pre: 'PSU', face: '#262b2f', sw: 22, psu: 1, groups: [g('pwr', 4, { prefix: 'OUT', order: 'row' })] },
+  { id: 'mc1', cat: 'onshelf', name: 'Media converter', h: 1, pre: 'MC', face: '#2e3237', sw: 13, psu: 1, groups: [g('rj45', 1, { name: 'TX', prefix: 'TX', order: 'row' }), g('lc', 1, { name: 'FX', prefix: 'FX', order: 'row' })] },
+  { id: 'box', cat: 'onshelf', name: 'Small device', h: 1, pre: 'DEV', face: '#353b40', sw: 20, psu: 1, groups: [g('rj45', 2, { order: 'row' })] },
+  { id: 'custom', cat: 'custom', name: 'Custom device', h: 1, pre: 'DEV', face: '#353b40', psu: 1, groups: [g('rj45', 4, { order: 'row' })] },
 ];
 const CAT_BY = Object.fromEntries(CATALOG.map(c => [c.id, c]));
 const PASSIVE = new Set(['patch']);
@@ -875,7 +914,7 @@ const curRack = () => P.racks.find(r => r.id === sel.rack) || P.racks[0];
 const devOf = id => IDX.get(id)?.d;
 const rackOf = id => IDX.get(id)?.rack;
 
-function save() { lsSet(STORE, JSON.stringify({ P, sel, colourBy, leads })); $('#projname').textContent = (P.name || 'Untitled') + (P.site ? ' · ' + P.site : ''); }
+function save() { lsSet(STORE, JSON.stringify({ P, sel, colourBy, leads, face })); $('#projname').textContent = (P.name || 'Untitled') + (P.site ? ' · ' + P.site : ''); }
 function snap() { undoS.push(JSON.stringify(P)); if (undoS.length > 80) undoS.shift(); redoS.length = 0; }
 function change(fn, o = {}) { snap(); fn(); reindex(); save(); render(o); }
 function undo() { if (!undoS.length) return; redoS.push(JSON.stringify(P)); P = JSON.parse(undoS.pop()); fixSel(); reindex(); save(); render(); }
@@ -888,10 +927,17 @@ function fixSel() {
 }
 
 /* ---------- devices and ports ---------- */
+const psuOf = d => clamp(d.psu ?? CAT_BY[d.type]?.psu ?? 0, 0, 4);   // power inlets (PSUs) on the back
+function inletGroup(d) {
+  const n = psuOf(d); if (!n) return null;
+  return { id: 'pw', kind: 'inlet', count: n, start: 1, prefix: 'PSU', order: 'row', rear: true, name: n === 1 ? (CAT_BY[d.type]?.pin || 'Power in') : '' };
+}
+const allGroups = d => { const ig = inletGroup(d); return ig ? [...d.groups, ig] : d.groups; };
+const isPow = k => k === 'pwr' || k === 'inlet';
 function portList(d) {
   const out = [];
   if (!d) return out;
-  for (const gr of d.groups) for (let i = 0; i < gr.count; i++) {
+  for (const gr of allGroups(d)) for (let i = 0; i < gr.count; i++) {
     const n = gr.start + i;
     out.push({ id: gr.id + '-' + n, n, i, gr, kind: gr.kind, name: gr.count === 1 && gr.name ? gr.name : (gr.prefix || '') + n });
   }
@@ -928,28 +974,38 @@ function makeDev(type, u, side) {
   return d;
 }
 const devName = d => CAT_BY[d.type]?.name || 'Device';
-const isShelf = d => CAT_BY[d.type]?.art === 'shelf';
+const isShelf = d => CAT_BY[d.type]?.art === 'shelf' || CAT_BY[d.type]?.art === 'drawer';   // holds other kit
+const isDrawer = d => CAT_BY[d.type]?.art === 'drawer';
+const isV = d => !!CAT_BY[d.type]?.vert;            // 0U vertical PDU at the back
+const accepts = (sh, type) => !!CAT_BY[type] && (isDrawer(sh) ? !!CAT_BY[type].acm : !CAT_BY[type].acm && !CAT_BY[type].vert);
+const holderWord = sh => isDrawer(sh) ? 'drawer' : 'shelf';
 const sideOf = d => d.side || 'full';
 const shelfOf = d => (d.on && devOf(d.on)) || null;       // the shelf this kit sits on, if any
 const inRack = d => !shelfOf(d);
-const uOf = d => (shelfOf(d) || d).u;
-const uRange = d => d.h > 1 ? d.u + '–' + (d.u + d.h - 1) : '' + d.u;
+const uOf = d => isV(d) ? '0U' : (shelfOf(d) || d).u;
+const uRange = d => isV(d) ? '0U' : d.h > 1 ? d.u + '–' + (d.u + d.h - 1) : '' + d.u;
+
 const SIDE_TXT = { left: 'left half', right: 'right half' };
+const vTxt = d => '0U, back of the rack, ' + (d.v === 'right' ? 'right' : 'left') + ' side';
 function posTxt(d) {
   const sh = shelfOf(d);
+  if (isV(d)) return vTxt(d);
+  if (sh && isDrawer(sh)) return 'in drawer ' + sh.label + ', slot ' + d.slot + ' (U' + uRange(sh) + ')';
   if (sh) return 'on shelf ' + sh.label + ' (U' + uRange(sh) + ')';
   return 'U' + uRange(d) + (SIDE_TXT[sideOf(d)] ? ', ' + SIDE_TXT[sideOf(d)] : '');
 }
 const swOf = d => clamp(+d.sw || CAT_BY[d.type]?.sw || 100, 5, 100);
 function shelfItems(sh) { const r = rackOf(sh.id); return r ? r.devices.filter(x => x.on === sh.id).sort((a, b) => (a.slot || 0) - (b.slot || 0)) : []; }
-const shelfUsed = (sh, except) => shelfItems(sh).reduce((t, x) => t + (x.id === except ? 0 : swOf(x)), 0);
+const shelfUsed = (sh, except) => isDrawer(sh) ? Math.round(shelfItems(sh).filter(x => x.id !== except).length * 100 / CAT_BY[sh.type].slots) : shelfItems(sh).reduce((t, x) => t + (x.id === except ? 0 : swOf(x)), 0);
+const freeSlot = sh => { const used = new Set(shelfItems(sh).map(x => x.slot)); for (let i = 1; i <= CAT_BY[sh.type].slots; i++) if (!used.has(i)) return i; return 0; };
+const vItems = (r, side) => r.devices.filter(x => isV(x) && (x.v || 'left') === side).sort((a, b) => (a.vi || 0) - (b.vi || 0));
 function orderedDevs(r) { // top of the rack first, kit on a shelf straight after its shelf
   const out = [];
-  for (const d of r.devices.filter(inRack).sort((a, b) => b.u - a.u || (a.side === 'right') - (b.side === 'right'))) { out.push(d); if (isShelf(d)) out.push(...shelfItems(d)); }
-  return out;
+  for (const d of r.devices.filter(x => inRack(x) && !isV(x)).sort((a, b) => b.u - a.u || (a.side === 'right') - (b.side === 'right'))) { out.push(d); if (isShelf(d)) out.push(...shelfItems(d)); }
+  return out.concat(vItems(r, 'left'), vItems(r, 'right'));
 }
 function clash(u, h, side, o) {
-  if (!inRack(o)) return false;
+  if (!inRack(o) || isV(o)) return false;
   if (!(u <= o.u + o.h - 1 && o.u <= u + h - 1)) return false;
   return side === 'full' || sideOf(o) === 'full' || sideOf(o) === side;
 }
@@ -959,16 +1015,17 @@ function placeOK(r, u, h, except, side = 'full') {
 }
 function lowestFree(r, h) { for (let u = 1; u + h - 1 <= r.u; u++) if (placeOK(r, u, h)) return u; return 0; }
 function freeSpot(r, h, half, except) { // { u, side } of the lowest space that fits, or null
-  if (half) for (const o of r.devices.filter(x => inRack(x) && sideOf(x) !== 'full' && x.id !== except).sort((a, b) => a.u - b.u)) { // pair up with half-width kit first
+  if (half) for (const o of r.devices.filter(x => inRack(x) && !isV(x) && sideOf(x) !== 'full' && x.id !== except).sort((a, b) => a.u - b.u)) { // pair up with half-width kit first
     const side = sideOf(o) === 'left' ? 'right' : 'left';
     if (placeOK(r, o.u, h, except, side)) return { u: o.u, side };
   }
   for (let u = 1; u + h - 1 <= r.u; u++) for (const side of half ? ['left', 'right'] : ['full']) if (placeOK(r, u, h, except, side)) return { u, side };
   return null;
 }
-function usedU(r) { return r.devices.filter(inRack).reduce((t, d) => t + d.h * (sideOf(d) === 'full' ? 1 : .5), 0); }
+function usedU(r) { return r.devices.filter(x => inRack(x) && !isV(x)).reduce((t, d) => t + d.h * (sideOf(d) === 'full' ? 1 : .5), 0); }
 function badDev(r, d) {
   if (!inRack(d)) return false;
+  if (isV(d)) return vItems(r, d.v || 'left').length > 2;
   if (isShelf(d) && shelfUsed(d) > 100) return true;
   return d.u < 1 || d.u + d.h - 1 > r.u || r.devices.some(o => o.id !== d.id && clash(d.u, d.h, sideOf(d), o));
 }
@@ -1007,7 +1064,7 @@ function stdPorts(d) { // does the device have its catalogue port layout?
 function swapType(d, type) { // change model: new faceplate, allocations kept by port name
   const c = CAT_BY[type], r = rackOf(d.id);
   const groups = c.groups.map(gr => ({ ...gr, id: uid().slice(0, 4) }));
-  const byName = new Map(portList({ groups }).map(p => [p.kind + '|' + p.name, p.id]));   // same port: same name and type
+  const byName = new Map(portList({ groups, type, psu: d.psu }).map(p => [p.kind + '|' + p.name, p.id]));   // same port: same name and type
   const old = portList(d), lost = old.filter(p => d.ports[p.id] && !byName.has(p.kind + '|' + p.name));
   if (lost.length && !confirm(`${lost.length} allocated port${lost.length > 1 ? 's' : ''} (${lost.slice(0, 6).map(p => p.name).join(', ')}${lost.length > 6 ? '…' : ''}) ${lost.length > 1 ? "aren't" : "isn't"} on the ${c.model}, so ${lost.length > 1 ? 'they' : 'it'} would be cleared. Carry on?`)) return false;
   if (c.h !== d.h && inRack(d) && !placeOK(r, d.u, c.h, d.id, c.half ? (sideOf(d) === 'full' ? 'left' : sideOf(d)) : 'full')) { toast(`The ${c.model} doesn't fit here.`); return false; }
@@ -1043,15 +1100,21 @@ let FW = 820, RAIL = 30, NUMW = 34, LBLW = 160;   // full size; a narrower face 
 const isPhone = () => matchMedia('(max-width: 760px)').matches;
 function setGeom(compact) { if (compact) { FW = 500; RAIL = 18; NUMW = 22; LBLW = 118; } else { FW = 820; RAIL = 30; NUMW = 34; LBLW = 160; } }
 function withFull(fn) { const c = FW !== 820; setGeom(false); try { return fn(); } finally { if (c) setGeom(true); } }
-const rackW = () => NUMW * 2 + RAIL * 2 + FW;
+let face = 'front';                                // which side of the racks is drawn: front or rear
+const VPW = () => FW === 820 ? 46 : 30;            // width of a 0U PDU strip at the back
+const OX = () => face === 'rear' ? VPW() : 0;      // room for the PDU strips in the rear view
+const RX = () => OX() + NUMW + RAIL;               // left edge of the 19" opening
+function withFace(f, fn) { const o = face; face = f; try { return fn(); } finally { face = o; } }
+const rackW = () => NUMW * 2 + RAIL * 2 + FW + OX() * 2;
 const rackH = r => PADT + r.u * UH + PADB;
 const devY = (r, d) => PADT + (r.u - (d.u + d.h - 1)) * UH;
 const uAtY = (r, y) => r.u - Math.floor((y - PADT) / UH);
 function trunc(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 
-function layoutPorts(d, W, H, left = LBLW, right = 24) {
+const grFace = gr => gr.rear ? 'rear' : 'front';
+function layoutPorts(d, W, H, left = LBLW, right = 24, all = false) {
   const avail = W - left - right, gap = 3, bg = 7, GG = 16;
-  const blocks = d.groups.filter(gr => gr.count > 0).map(gr => {
+  const blocks = allGroups(d).filter(gr => gr.count > 0 && (all || grFace(gr) === face)).map(gr => {
     const K = KINDS[gr.kind] || KINDS.rj45;
     let rows = gr.rows || (gr.order === 'row' ? Math.ceil(gr.count / 24) : (gr.count >= 8 ? 2 : 1));
     rows = clamp(rows, 1, d.h * 2);
@@ -1090,12 +1153,13 @@ function portSVG(d, p, interactive) {
   if (p.kind === 'lc') shape = `<rect class="sock" x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${f}" stroke="#5b646b" stroke-width=".8"/><rect x="${x + w * .14}" y="${y + h * .58}" width="${w * .3}" height="${h * .3}" fill="#0a0c0d" opacity=".55"/><rect x="${x + w * .56}" y="${y + h * .58}" width="${w * .3}" height="${h * .3}" fill="#0a0c0d" opacity=".55"/>`;
   else if (p.kind === 'sc') shape = `<rect class="sock" x="${x}" y="${y}" width="${w}" height="${h}" rx="1.5" fill="${f}" stroke="#5b646b" stroke-width=".8"/><rect x="${x + w * .3}" y="${y + h * .62}" width="${w * .4}" height="${h * .26}" fill="#0a0c0d" opacity=".55"/>`;
   else if (p.kind === 'sfp' || p.kind === 'sfpp') shape = `<rect x="${x - 1.2}" y="${y - 1.2}" width="${w + 2.4}" height="${h + 2.4}" rx="1.2" fill="#b9c0c6"/><rect class="sock" x="${x + .6}" y="${y + .6}" width="${w - 1.2}" height="${h - 1.2}" rx=".8" fill="${f}" stroke="#7d868d" stroke-width=".8"/><rect x="${x + 2}" y="${y + h - 3.2}" width="${w - 4}" height="1.4" fill="#0a0c0d" opacity=".45"/>`;
+  else if (p.kind === 'inlet') shape = `<path class="sock" d="M${x + w * .14},${y}H${x + w * .86}L${x + w},${y + h * .32}V${y + h}H${x}V${y + h * .32}Z" fill="${f}" stroke="#7d868d" stroke-width=".8"/>` + [.3, .5, .7].map((k, i) => `<rect x="${x + w * k - 1}" y="${y + h * (i === 1 ? .22 : .5)}" width="2" height="${h * .26}" fill="#0a0c0d" opacity=".6"/>`).join('');
   else if (p.kind === 'pwr') shape = `<rect class="sock" x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${f}" stroke="#5b646b" stroke-width=".8"/><rect x="${x + w * .22}" y="${y + h * .62}" width="${w * .14}" height="${h * .22}" fill="#0a0c0d" opacity=".6"/><rect x="${x + w * .64}" y="${y + h * .62}" width="${w * .14}" height="${h * .22}" fill="#0a0c0d" opacity=".6"/>`;
   else shape = `<rect class="sock" x="${x}" y="${y}" width="${w}" height="${h}" rx="1.4" fill="${p.kind === 'con' && free ? '#1f3a4f' : f}" stroke="#5b646b" stroke-width=".8"/><rect x="${x + w * .32}" y="${y + h - 3}" width="${w * .36}" height="2.2" fill="#0a0c0d" opacity=".55"/>`;
   const fs = Math.min(8.5, w * .42, h * .62);
   const label = fs >= 5 ? `<text x="${x + w / 2}" y="${y + Math.min(h * .5, h - 3) + fs * .1}" font-size="${fs.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" fill="${txt}" font-family="PlexMono, 'IBM Plex Mono', monospace" font-weight="500">${esc(p.short || (String(p.name).length > 4 ? p.n : p.name))}</text>` : '';
   if (p.mg) shape += `<rect x="${x + 1}" y="${y + h - 1.6}" width="${w - 2}" height="1.6" fill="#3d8bfd"/>`;   // multi-gig
-  if (st === 'patched' && p.kind !== 'pwr') shape += `<circle cx="${x + w - 2.4}" cy="${y + 2.4}" r="1.5" fill="#5dff8f"/>`;   // link LED
+  if (st === 'patched' && !isPow(p.kind)) shape += `<circle cx="${x + w - 2.4}" cy="${y + 2.4}" r="1.5" fill="#5dff8f"/>`;   // link LED
   const hot = interactive && sel.dev === d.id && sel.port === p.id ? ' hot' : '';
   return `<g class="port${hot}" data-p="${d.id}|${p.id}">${shape}${label}</g>`;
 }
@@ -1105,10 +1169,10 @@ function devArt(c, d, H) {
   if (art === 'cm') for (let i = 0, n = Math.floor((FW - 190) / 66); i < n; i++) s += `<rect x="${LBLW + 10 + i * 66}" y="${H * .18}" width="44" height="${H * .64}" rx="5" fill="#15181a" stroke="#3b4248"/>`;
   else if (art === 'brush') { s += `<rect x="${LBLW}" y="${H * .32}" width="${FW - LBLW - 40}" height="${H * .36}" rx="4" fill="#0f1113"/>`; for (let x = LBLW + 6; x < FW - 44; x += 4) s += `<line x1="${x}" y1="${H * .34}" x2="${x + 1.5}" y2="${H * .66}" stroke="#41484e" stroke-width="1"/>`; }
   else if (art === 'blank') for (let x = LBLW + 20; x < FW - 60; x += 14) s += `<rect x="${x}" y="${H * .3}" width="6" height="${H * .4}" rx="3" fill="#1d2023"/>`;
+  else if (art === 'drawer') s += `<rect x="26" y="${H - 18}" width="${Math.min(110, LBLW - 40)}" height="9" rx="4.5" fill="#15181a" stroke="#6b757c"/><rect x="${LBLW - 6}" y="3" width="2" height="${H - 6}" fill="#15181a"/>`;
   else if (art === 'shelf') s += `<rect x="16" y="${H - 9}" width="${FW - 32}" height="8" fill="#5a636a"/><rect x="16" y="${H - 9}" width="${FW - 32}" height="2" fill="#7b858c"/>`;
   else if (art === 'fan') for (let i = 0, n = Math.floor((FW - LBLW - 40) / 150); i < n; i++) { const cx = LBLW + 100 + i * 150; s += `<circle cx="${cx}" cy="${H / 2}" r="${H * .38}" fill="#15181a" stroke="#454c52"/><circle cx="${cx}" cy="${H / 2}" r="${H * .1}" fill="#454c52"/>`; }
-  if (d.type.startsWith('ups')) s += `<rect x="${FW - 150}" y="${12}" width="96" height="30" rx="3" fill="#0e2421" stroke="#2fb3aa" stroke-width="1"/><text x="${FW - 102}" y="31" font-size="11" text-anchor="middle" fill="#5fd4cb" font-family="PlexMono, monospace">ONLINE</text><circle cx="${FW - 40}" cy="27" r="4" fill="#3bd16f"/>`;
-  if (/^(srv|avg|nvr|ccure)/.test(d.type)) { const cols = FW < 800 ? 2 : 4, rows = d.h === 1 ? 1 : 2, n = cols * rows; for (let i = 0; i < n; i++) { const col = i % (n / rows), row = Math.floor(i / (n / rows)); s += `<rect x="${FW - 36 - cols * 66 + col * 66}" y="${6 + row * (H - 12) / rows}" width="60" height="${(H - 12) / rows - 4}" rx="2" fill="#1b1f22" stroke="#454c52"/><circle cx="${FW - 36 - cols * 66 + col * 66 + 52}" cy="${6 + row * (H - 12) / rows + 6}" r="1.8" fill="#3bd16f"/>`; } }
+  if (/^(srv|avg$|nvr|ccure)/.test(d.type)) { const cols = FW < 800 ? 2 : 4, rows = d.h === 1 ? 1 : 2, n = cols * rows; for (let i = 0; i < n; i++) { const col = i % (n / rows), row = Math.floor(i / (n / rows)); s += `<rect x="${FW - 36 - cols * 66 + col * 66}" y="${6 + row * (H - 12) / rows}" width="60" height="${(H - 12) / rows - 4}" rx="2" fill="#1b1f22" stroke="#454c52"/><circle cx="${FW - 36 - cols * 66 + col * 66 + 52}" cy="${6 + row * (H - 12) / rows + 6}" r="1.8" fill="#3bd16f"/>`; } }
   return s;
 }
 
@@ -1147,6 +1211,26 @@ function lookSVG(d, b, ports) { // the parts of a real faceplate that aren't por
     const lx2 = (by ? by.x + by.w : W - 16) - 12;
     s += `<g transform="translate(${lx2},${H / 2 - 5})">${lit('#43e06e')}</g><g transform="translate(${lx2},${H / 2 + 5})">${lit('#2a3a2e')}</g>`;
   }
+  if (c.look === 'avg') { // Avigilon NVR5: a mesh bezel over the drive bays, logo and power button on the right
+    const bx = LBLW, bw = W - bx - 130, rows = H > 60 ? (c.bays > 10 ? 3 : 2) : 1, cols = Math.ceil(Math.min(c.bays, 12) / rows);
+    s += `<text x="26" y="10.5" font-size="7.6" font-weight="600" letter-spacing=".16em" fill="#c9d3d8" font-family="Plex, sans-serif">AVIGILON</text><text x="26" y="${H - 5}" font-size="8" fill="#9fb0b6" font-family="Plex, sans-serif">${esc(c.model)}</text>`;
+    s += `<rect x="${bx}" y="4" width="${bw}" height="${H - 8}" rx="3" fill="#15181b" stroke="#3a4248"/>`;
+    for (let i = 0; i < rows * cols; i++) { const cw = (bw - 12) / cols, rh = (H - 16) / rows, cx = bx + 6 + (i % cols) * cw, cy = 8 + Math.floor(i / cols) * rh; s += `<rect x="${cx + 1}" y="${cy + 1}" width="${cw - 3}" height="${rh - 3}" rx="1.5" fill="#1d2226" stroke="#2c343a" stroke-width=".8"/><circle cx="${cx + cw - 7}" cy="${cy + rh / 2}" r="1.5" fill="#3d8bfd" opacity=".8"/>`; }
+    for (let x = bx + 4; x < bx + bw - 4; x += 5) s += `<line x1="${x}" y1="5" x2="${x - 4}" y2="${H - 5}" stroke="#000" stroke-opacity=".35" stroke-width="1.6"/>`;
+    const rx = bx + bw + 14;
+    s += `<rect x="${rx}" y="${H / 2 - 11}" width="72" height="22" rx="3" fill="#0f1214" stroke="#3a4248"/><text x="${rx + 36}" y="${H / 2 + 3.5}" font-size="9" font-weight="600" letter-spacing=".14em" text-anchor="middle" fill="#e6ebee" font-family="Plex, sans-serif">AVIGILON</text>`;
+    s += `<circle cx="${rx + 90}" cy="${H / 2}" r="6" fill="#1b1f22" stroke="#7d878e"/><path d="M${rx + 90},${H / 2 - 3.5}v3.2M${rx + 87.4},${H / 2 - 2}a3.4 3.4 0 1 0 5.2 0" fill="none" stroke="#4fa8ff" stroke-width="1.1" stroke-linecap="round"/>`;
+    s += `<circle cx="${rx + 104}" cy="${H / 2 - 5}" r="1.9" fill="#43e06e"/><circle cx="${rx + 104}" cy="${H / 2 + 5}" r="1.9" fill="#3d8bfd"/>`;
+  }
+  if (c.look === 'ups') { // rack UPS: vented front with the display panel and buttons
+    const px = W - 190;
+    for (let x = LBLW; x < px - 12; x += 7) s += `<rect x="${x}" y="${H * .2}" width="3" height="${H * .6}" rx="1.5" fill="#15181a"/>`;
+    s += `<rect x="${px}" y="${H / 2 - 17}" width="150" height="34" rx="4" fill="#14181a" stroke="#4b545b"/><rect x="${px + 8}" y="${H / 2 - 11}" width="78" height="22" rx="2" fill="#0e2421" stroke="#2fb3aa" stroke-width=".8"/>`;
+    s += `<text x="${px + 47}" y="${H / 2 - 1.5}" font-size="8" text-anchor="middle" fill="#5fd4cb" font-family="PlexMono, monospace">ONLINE</text><text x="${px + 47}" y="${H / 2 + 7.5}" font-size="6.5" text-anchor="middle" fill="#5fd4cb" font-family="PlexMono, monospace">230V  42%</text>`;
+    [0, 1, 2].forEach(i => { s += `<circle cx="${px + 98 + i * 12}" cy="${H / 2 + 5}" r="3.6" fill="#2a3035" stroke="#6b757c" stroke-width=".7"/>`; });
+    s += `<circle cx="${px + 110}" cy="${H / 2 - 8}" r="1.8" fill="#43e06e"/><circle cx="${px + 98}" cy="${H / 2 - 8}" r="1.8" fill="#3a3f44"/><circle cx="${px + 122}" cy="${H / 2 - 8}" r="1.8" fill="#3a3f44"/>`;
+    s += `<text x="26" y="${H - 6}" font-size="8" fill="#9fb0b6" font-family="Plex, sans-serif">${esc(c.model.replace(/ style.*$/, ''))}</text>`;
+  }
   if (c.look === 'icx') { // IA-RS1 shelf bay with the ICX body; LEDs on the front, network ports on the back
     s += `<rect x="${b.side === 'right' ? 0 : 16}" y="1" width="${W - 16}" height="${H - 2}" fill="#3e464c"/>`;
     s += `<rect x="${by.x}" y="1" width="${by.w}" height="${H - 2}" rx="2.5" fill="${c.face}" stroke="#0a0c0d" stroke-width="1.1"/>`;
@@ -1155,44 +1239,123 @@ function lookSVG(d, b, ports) { // the parts of a real faceplate that aren't por
     const leds = [['#43e06e', 1], ['#43e06e', 1], ['#f0a33a', 0], ['#3d8bfd', 1], ['#43e06e', anyLink], ['#43e06e', anyLink]];
     const ox = by.x + by.w * .36;
     leds.forEach(([col, on], i) => { s += `<circle cx="${ox + (i % 3) * 8}" cy="${H / 2 - 4 + Math.floor(i / 3) * 9}" r="2.1" fill="${on ? col : '#3a3f44'}"/>`; });
-    const rp = ports.filter(p => p.rear);
-    if (rp.length) {
-      const x0 = Math.min(...rp.map(p => p.x)) - 4, x1 = Math.max(...rp.map(p => p.x + p.w)) + 4, y0 = Math.min(...rp.map(p => p.y)) - 9, y1 = Math.max(...rp.map(p => p.y + p.h)) + 3;
-      s += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="2" fill="none" stroke="#7d878e" stroke-width=".8" stroke-dasharray="2 2"/><text x="${x0 + 3}" y="${y0 + 6}" font-size="5.2" fill="#9fb0b6" font-family="Plex, sans-serif">ON THE BACK</text>`;
-    }
   }
   return s;
-}   // the space at the right-hand end of a shelf
+}
+const RLW = () => FW === 820 ? 100 : 66;           // label space on the back of kit
+const mirrorBody = (by, b) => by && face === 'rear' ? { x: b.w - by.x - by.w, w: by.w } : by;
+function rearSVG(d, b, ports) { // the back of a piece of kit
+  const c = CAT_BY[d.type] || {}, W = b.w, H = b.h, by = mirrorBody(bodyOf(d, b), b), passive = c.cat === 'patch' || (c.art && c.art !== 'fan');
+  let s = '';
+  if (by) { s += `<rect x="${b.pos === 'right' ? 0 : b.half ? 0 : 16}" y="1" width="${b.half ? W - 16 : W - 32}" height="${H - 2}" fill="#3e464c" opacity=".7"/>`; if (b.half) s += `<rect x="${b.pos === 'right' ? W - 16 : 0}" y="0" width="16" height="${H}" fill="#4a5258" opacity=".6"/>`; }
+  const bx = by ? by.x : 0, bw = by ? by.w : W;
+  s += `<rect class="face" x="${bx}" y="0" width="${bw}" height="${H}" rx="2" fill="${passive ? '#202427' : '#1b1f22'}" stroke="#0a0c0d" stroke-width="1.2" ${passive ? 'opacity=".8"' : ''}/>`;
+  if (c.art === 'shelf') s += devArt(c, d, H);
+  if (c.cat === 'patch') for (let x = 30; x < W - 30; x += 44) s += `<rect x="${x}" y="${H * .3}" width="36" height="${H * .4}" rx="2" fill="#2b3035" stroke="#3b4248"/>`;   // punch-down blocks
+  if (c.art === 'drawer') s += `<rect x="${W * .25}" y="${H * .3}" width="${W * .5}" height="${H * .4}" rx="4" fill="#0f1113"/>` + Array.from({ length: 40 }, (_, i) => `<line x1="${W * .25 + 6 + i * (W * .5 - 12) / 40}" y1="${H * .33}" x2="${W * .25 + 7.5 + i * (W * .5 - 12) / 40}" y2="${H * .67}" stroke="#41484e"/>`).join('');
+  for (const p of ports.filter(p => p.kind === 'inlet')) s += `<rect x="${p.x - 4}" y="3" width="${p.w + 8}" height="${H - 6}" rx="2" fill="#2a3035" stroke="#4b545b" stroke-width=".8"/><rect x="${p.x - 1}" y="${H - 8}" width="${p.w + 2}" height="3" rx="1.5" fill="#6b757c"/>`;
+  const end = ports.length ? Math.max(...ports.map(p => p.x + p.w)) + 14 : bx + Math.min(RLW(), bw * .4) + 10;
+  if (!passive && bx + bw - 12 - end > 30) for (let x = end; x < bx + bw - 14; x += 6) s += `<rect x="${x}" y="${H * .22}" width="2.6" height="${H * .56}" rx="1.3" fill="#0c0e10"/>`;
+  const lw = by ? Math.min(70, bw * .3) : RLW() - 10, lx = bx + 8;
+  s += `<text x="${lx}" y="${H > 45 ? H / 2 : 16}" font-size="11" font-weight="600" fill="#ffffff" font-family="Plex, 'IBM Plex Sans', sans-serif">${esc(trunc(d.label || c.name, Math.max(3, Math.floor(lw / 6.6))))}</text>`;
+  s += `<text x="${lx}" y="${H > 45 ? H / 2 + 13 : 29}" font-size="8.5" fill="#8e9ba0" font-family="Plex, sans-serif">${esc(trunc((d.model || c.model || c.name || '') , Math.max(3, Math.floor(lw / 4.6))))}</text>`;
+  return s;
+}
+const DLW = () => LBLW;                            // label space at the left of an IP-ACM drawer
 function devBox(r, d) { // where a device is drawn, in rack drawing units
+  if (isV(d)) {
+    const side = d.v === 'right' ? 'right' : 'left', list = vItems(r, side), n = clamp(list.length, 1, 2), i = clamp(list.indexOf(d), 0, 1), gap = 8, h = (r.u * UH - (n - 1) * gap) / n;
+    return { x: side === 'left' ? 3 : rackW() - VPW() + 3, y: PADT + i * (h + gap), w: VPW() - 6, h, vert: true, side };
+  }
   const sh = shelfOf(d);
   if (sh) {
-    const sb = devBox(r, sh), usable = sb.w - LBLW - SHELF_PAD; let x = LBLW;
+    const sb = devBox(r, sh);
+    if (isDrawer(sh)) {
+      const n = CAT_BY[sh.type].slots, sw = (sb.w - DLW() - 10) / n, x = DLW() + (clamp(d.slot || 1, 1, n) - 1) * sw;
+      return { x: sb.x + x, y: sb.y + 5, w: sw - 4, h: sb.h - 10, item: true, acm: true, rel: { x, y: 5 } };
+    }
+    const usable = sb.w - LBLW - SHELF_PAD; let x = LBLW;
     for (const it of shelfItems(sh)) {
       const w = usable * swOf(it) / 100 - 4;
-      if (it === d) return { x: sb.x + x, y: sb.y + 3, w, h: sb.h - 13, item: true, rel: { x, y: 3 } };
+      const rx = face === 'rear' ? sb.w - x - w : x;   // seen from the back, the shelf runs the other way
+      if (it === d) return { x: sb.x + rx, y: sb.y + 3, w, h: sb.h - 13, item: true, rel: { x: rx, y: 3 } };
       x += w + 4;
     }
   }
   const side = sideOf(d), half = side !== 'full';
-  return { x: NUMW + RAIL + (side === 'right' ? FW / 2 : 0), y: devY(r, d) + 1, w: half ? FW / 2 : FW, h: d.h * UH - 2, half, side };
+  const pos = half && face === 'rear' ? (side === 'left' ? 'right' : 'left') : side;   // left and right swap at the back
+  return { x: RX() + (pos === 'right' ? FW / 2 : 0), y: devY(r, d) + 1, w: half ? FW / 2 : FW, h: d.h * UH - 2, half, side, pos };
+}
+function vpduPorts(d, b) { // outlets down a vertical PDU, the input at the bottom
+  const ps = portList(d), top = 34, bot = 6, n = ps.length; if (!n) return [];
+  const step = (b.h - top - bot) / n, h = clamp(step - 3, 3, 17), w = Math.min(b.w - 10, h * 1.3);
+  return ps.map((p, i) => ({ id: p.id, kind: p.kind, n: p.n, name: p.name, short: p.kind === 'inlet' ? 'IN' : String(p.n), x: (b.w - w) / 2, y: top + i * step + (step - h) / 2, w, h }));
+}
+function acmPorts(d, b) { // the two Ethernet ports on an IP-ACM, bottom right of its window
+  if (face === 'rear') return [];
+  const ps = portList(d).filter(p => p.kind !== 'inlet'), w = Math.min(17, (b.w - 14) / 2.4), h = w * .85;
+  return ps.map((p, i) => ({ id: p.id, kind: p.kind, n: p.n, name: p.name, short: 'E' + p.n, x: b.w - 5 - (ps.length - i) * (w + 3) + 3, y: b.h - h - 5, w, h }));
 }
 function devPorts(d, b) {
+  if (b.vert) return vpduPorts(d, b);
+  if (b.acm) return acmPorts(d, b);
   if (b.item) return layoutPorts(d, b.w, b.h - 15, 5, 5).map(p => ({ ...p, y: p.y + 15 }));
+  if (face === 'rear') {
+    const by = mirrorBody(bodyOf(d, b), b);
+    if (by) return layoutPorts(d, by.w, b.h - 4, Math.min(70, by.w * .3) + 10, 8).map(p => ({ ...p, x: p.x + by.x, y: p.y + 2 }));
+    return layoutPorts(d, b.w, b.h, RLW(), 14);
+  }
   const c = CAT_BY[d.type], by = bodyOf(d, b);
   if (c?.look === 'icx' && by) return layoutPorts(d, b.w, b.h - 6, by.x + by.w * .62, b.w - by.x - by.w + 5).map(p => ({ ...p, y: p.y + 4 }));
   if (by) { const lw = Math.min(LBLW - 26, by.w * .3); return layoutPorts(d, by.w, b.h, lw + 6, 22).map(p => ({ ...p, x: p.x + by.x })); }
   if (b.half) return layoutPorts(d, b.w, b.h, Math.min(LBLW, b.w * .45), 22);
   return layoutPorts(d, b.w, b.h);
 }
+function wrap(s, n, lines) { // break text into at most `lines` lines of n characters
+  const out = []; let cur = '';
+  for (const w of String(s || '').split(/\s+/).filter(Boolean)) { if ((cur + ' ' + w).trim().length > n && cur) { out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); }
+  if (cur) out.push(cur);
+  const res = [];
+  for (const part of String(s || '').includes('\n') ? String(s).split('\n').map(x => x.trim()).filter(Boolean) : out) res.push(trunc(part, n));
+  return res.slice(0, lines);
+}
+function acmSVG(d, b, sh) { // an IP-ACM in its drawer: a label window when shut, the board when open
+  const W = b.w, H = b.h, n = Math.max(4, Math.floor((W - 8) / 5.6)), tl = wrap(d.tag, Math.max(4, Math.floor((W - 8) / 4.5)), H > 50 ? 3 : 1);
+  let s = '';
+  if (sh.open) {
+    s += `<rect class="face" width="${W}" height="${H}" rx="2" fill="#1f6b46" stroke="#0d2f1f" stroke-width="1"/>`;
+    for (let i = 0; i < Math.floor((W - 10) / 9); i++) s += `<rect x="${5 + i * 9}" y="2" width="7" height="6" fill="#2fa36a" stroke="#0d2f1f" stroke-width=".5"/>`;   // terminal blocks
+    s += `<rect x="${W / 2 - 9}" y="${H / 2 - 10}" width="18" height="14" fill="#111" opacity=".8"/>`;
+    s += `<text x="5" y="18" font-size="9.5" font-weight="600" fill="#fff" font-family="Plex, sans-serif">${esc(trunc(d.label, n))}</text>`;
+  } else {
+    s += `<rect class="face" width="${W}" height="${H}" rx="2" fill="#f2eedf" stroke="#8d8672" stroke-width="1"/>`;
+    s += `<rect x="3" y="3" width="13" height="11" rx="2" fill="#0b7a75"/><text x="9.5" y="11.5" font-size="8" font-weight="600" text-anchor="middle" fill="#fff" font-family="Plex, sans-serif">${d.slot}</text>`;
+    s += `<text x="19" y="12" font-size="9.5" font-weight="600" fill="#1b1f22" font-family="Plex, sans-serif">${esc(trunc(d.label, Math.max(3, n - 3)))}</text>`;
+    tl.forEach((t, i) => { s += `<text x="4" y="${24 + i * 9.5}" font-size="7.6" fill="#3c4348" font-family="Plex, sans-serif">${esc(t)}</text>`; });
+  }
+  return s;
+}
+function vpduSVG(r, d, b, o) {
+  const ports = devPorts(d, b), bad = badDev(r, d), W = b.w;
+  let s = `<g class="dev vert${bad ? ' bad' : ''}" data-d="${d.id}" transform="translate(${b.x},${b.y})"><rect class="face" width="${W}" height="${b.h}" rx="4" fill="${d.colour || '#1f2326'}" stroke="#0a0c0d" stroke-width="1.2"/>`;
+  s += `<rect x="3" y="3" width="${W - 6}" height="26" rx="2" fill="#0e2421" stroke="#2fb3aa" stroke-width=".8"/><text x="${W / 2}" y="13" font-size="7" text-anchor="middle" fill="#5fd4cb" font-family="PlexMono, monospace">${W > 30 ? '16.0A' : 'PDU'}</text>`;
+  s += `<text x="${W / 2}" y="24" font-size="6.5" font-weight="600" text-anchor="middle" fill="#fff" font-family="Plex, sans-serif">${esc(trunc(d.label, W > 30 ? 7 : 5))}</text>`;
+  for (const p of ports) s += portSVG(d, p, o.interactive);
+  if (o.interactive && sel.dev === d.id) s += `<rect x="-2" y="-2" width="${W + 4}" height="${b.h + 4}" rx="4" fill="none" stroke="#2fb3aa" stroke-width="3" pointer-events="none"/>`;
+  return s + '</g>';
+}
 function devSVG(r, d, o = {}) {
   const c = CAT_BY[d.type], b = devBox(r, d), W = b.w, H = b.h;
+  if (b.vert) return vpduSVG(r, d, b, o);
   const ports = devPorts(d, b);
   const selD = o.interactive && sel.dev === d.id;
   const bad = badDev(r, d);
   const x = o.rel && b.rel ? b.rel.x : b.x, y = o.rel && b.rel ? b.rel.y : (o.y ?? b.y);
   let s = `<g class="dev${bad ? ' bad' : ''}${b.item ? ' item' : ''}" data-d="${d.id}" transform="translate(${x},${y})">`;
-  s += `<rect class="face" x="0" y="0" width="${W}" height="${H}" rx="${b.item ? 3 : 2}" fill="${d.colour || c?.face || '#30363b'}" stroke="#0a0c0d" stroke-width="1.2"/>`;
-  if (b.item) {
+  if (face === 'rear' && !b.item) s += rearSVG(d, b, ports);
+  else if (b.acm) s += acmSVG(d, b, shelfOf(d));
+  else s += `<rect class="face" x="0" y="0" width="${W}" height="${H}" rx="${b.item ? 3 : 2}" fill="${d.colour || c?.face || '#30363b'}" stroke="#0a0c0d" stroke-width="1.2"/>`;
+  if (face === 'rear' && !b.item || b.acm) { /* drawn above */ } else if (b.item) {
     s += `<rect x="0" y="0" width="${W}" height="3" rx="1.5" fill="#ffffff" opacity=".08"/>`;
     s += `<text x="6" y="12" font-size="10" font-weight="600" fill="#ffffff" font-family="Plex, 'IBM Plex Sans', sans-serif">${esc(trunc(d.label || c?.name, Math.max(3, Math.floor((W - 10) / 6.4))))}</text>`;
   } else {
@@ -1215,11 +1378,19 @@ function devSVG(r, d, o = {}) {
     }
   }
   for (const p of ports) s += portSVG(d, p, o.interactive);
-  if (isShelf(d) && inRack(d)) {
+  if (isDrawer(d) && inRack(d) && face === 'front') {
+    const n = CAT_BY[d.type].slots, sw = (W - DLW() - 10) / n, items = shelfItems(d);
+    for (let k = 1; k <= n; k++) if (!items.some(x => x.slot === k)) {
+      const ex = DLW() + (k - 1) * sw;
+      s += `<g class="slotadd"${o.interactive ? ` data-acmslot="${d.id}|${k}"` : ''}><rect x="${ex}" y="5" width="${sw - 4}" height="${H - 10}" rx="2" fill="#1b1f22" stroke="#59626a" stroke-dasharray="3 3"/><text x="${ex + (sw - 4) / 2}" y="${H / 2 - 2}" text-anchor="middle" font-size="9" fill="#7d878e" font-family="Plex, sans-serif">Slot ${k}</text>${o.interactive ? `<text x="${ex + (sw - 4) / 2}" y="${H / 2 + 10}" text-anchor="middle" font-size="8.5" fill="#5fd4cb" font-family="Plex, sans-serif">+ IP-ACM</text>` : ''}</g>`;
+    }
+    for (const it of items) s += devSVG(r, it, { ...o, rel: true });
+  } else if (isShelf(d) && !isDrawer(d) && inRack(d)) {
     const items = shelfItems(d);
     if (!items.length && o.interactive) s += `<text x="${(LBLW + W - SHELF_PAD) / 2}" y="${H / 2 + 2}" text-anchor="middle" font-size="11" fill="#7d878e" font-family="Plex, sans-serif">Drop shelf kit here</text>`;
     for (const it of items) s += devSVG(r, it, { ...o, rel: true });
   }
+
   if (selD) s += `<rect x="-2" y="-2" width="${W + 4}" height="${H + 4}" rx="3" fill="none" stroke="#2fb3aa" stroke-width="3" pointer-events="none"/>`;
   return s + '</g>';
 }
@@ -1233,7 +1404,7 @@ function leadPath(a, b) {
   const sag = 18 + Math.min(60, Math.abs(a.x - b.x) * .08);
   return `M${a.x.toFixed(1)},${a.y.toFixed(1)} C${a.x.toFixed(1)},${(a.y + sag).toFixed(1)} ${b.x.toFixed(1)},${(b.y + sag).toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;
 }
-function leadCol(x, kind) { if (x.colour) return CABLE_COL[x.colour] || '#2f74d0'; return kind === 'lc' || kind === 'sc' ? '#2ec4d6' : kind === 'pwr' ? '#22262a' : '#2f74d0'; }
+function leadCol(x, kind) { if (x.colour) return CABLE_COL[x.colour] || '#2f74d0'; return kind === 'lc' || kind === 'sc' ? '#2ec4d6' : isPow(kind) ? '#16191c' : '#2f74d0'; }
 function leadsSVG(r) {
   let s = ''; const done = new Set();
   for (const d of r.devices) for (const pid in d.ports) {
@@ -1242,18 +1413,22 @@ function leadsSVG(r) {
     const o = devOf(x.link.d); if (!o || rackOf(o.id) !== r) continue;
     const a = portCentre(r, d, pid), b = portCentre(r, o, x.link.p); if (!a || !b) continue;
     const col = leadCol(x, a.kind);
-    s += `<path d="${leadPath(a, b)}" fill="none" stroke="#000" stroke-opacity=".35" stroke-width="4.2" stroke-linecap="round"/><path d="${leadPath(a, b)}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" opacity=".92"/>`;
+    s += `<path d="${leadPath(a, b)}" fill="none" stroke="${isPow(a.kind) && !x.colour ? '#c9d0d5' : '#000'}" stroke-opacity="${isPow(a.kind) && !x.colour ? '.55' : '.35'}" stroke-width="4.2" stroke-linecap="round"/><path d="${leadPath(a, b)}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" opacity=".92"/>`;
   }
   return `<g class="leads" pointer-events="none">${s}</g>`;
 }
 
 function rackSVG(r, o = {}) {
-  const W = rackW(), H = rackH(r), x0 = NUMW, x1 = W - NUMW;
+  const W = rackW(), H = rackH(r), x0 = OX() + NUMW, x1 = W - OX() - NUMW, rear = face === 'rear';
   const numCol = o.export ? '#4c5b59' : '#7c8a88';
   let s = '';
   if (o.export) s += `<rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>`;
-  s += `<text x="${W / 2}" y="22" text-anchor="middle" font-size="17" font-weight="600" fill="${o.export ? '#172322' : 'currentColor'}" font-family="Plex, 'IBM Plex Sans', sans-serif">${esc(r.name)}${r.location ? ' · ' + esc(r.location) : ''}</text>`;
-  s += `<text x="${W / 2}" y="38" text-anchor="middle" font-size="11.5" fill="${numCol}" font-family="Plex, 'IBM Plex Sans', sans-serif">${r.u}U · ${usedU(r)}U used, ${r.u - usedU(r)}U free${r.width ? ' · ' + esc(r.width) + ' × ' + esc(r.depth) + ' mm' : ''}</text>`;
+  s += `<text x="${W / 2}" y="22" text-anchor="middle" font-size="17" font-weight="600" fill="${o.export ? '#172322' : 'currentColor'}" font-family="Plex, 'IBM Plex Sans', sans-serif">${esc(r.name)}${r.location ? ' · ' + esc(r.location) : ''}${rear ? ' · back' : o.both ? ' · front' : ''}</text>`;
+  s += `<text x="${W / 2}" y="38" text-anchor="middle" font-size="11.5" fill="${numCol}" font-family="Plex, 'IBM Plex Sans', sans-serif">${rear ? 'Seen from the back · ' : ''}${r.u}U · ${usedU(r)}U used, ${r.u - usedU(r)}U free${r.width && !rear ? ' · ' + esc(r.width) + ' × ' + esc(r.depth) + ' mm' : ''}</text>`;
+  if (rear) { // cabinet sides with room for 0U PDUs
+    s += `<rect x="0" y="${PADT - 10}" width="${W}" height="${r.u * UH + 20}" rx="6" fill="#1d2124" stroke="#151819" stroke-width="2"/>`;
+    for (const side of ['left', 'right']) if (!vItems(r, side).length && o.interactive) { const vx = side === 'left' ? 3 : W - VPW() + 3; s += `<rect class="vslot" data-vside="${side}" x="${vx}" y="${PADT}" width="${VPW() - 6}" height="${r.u * UH}" rx="4" fill="transparent" stroke="#59626a" stroke-dasharray="4 4"/><text x="${vx + (VPW() - 6) / 2}" y="${PADT + r.u * UH / 2}" text-anchor="middle" font-size="9" fill="#7d878e" font-family="Plex, sans-serif" transform="rotate(-90 ${vx + (VPW() - 6) / 2} ${PADT + r.u * UH / 2})">0U PDU space</text>`; }
+  }
   s += `<rect x="${x0 - 4}" y="${PADT - 10}" width="${x1 - x0 + 8}" height="${r.u * UH + 20}" rx="5" fill="#2a2f33" stroke="#151819" stroke-width="2"/>`;
   s += `<rect x="${x0 + RAIL}" y="${PADT}" width="${FW}" height="${r.u * UH}" fill="#121517"/>`;
   for (const rx of [x0, x1 - RAIL]) {
@@ -1263,10 +1438,11 @@ function rackSVG(r, o = {}) {
   for (let i = 0; i < r.u; i++) {
     const u = r.u - i, y = PADT + i * UH;
     if (i) s += `<line x1="${x0 + RAIL}" y1="${y}" x2="${x1 - RAIL}" y2="${y}" stroke="#20252a" stroke-width="1"/>`;
-    for (const tx of [NUMW - 8, W - NUMW + 8]) s += `<text x="${tx}" y="${y + UH / 2 + 4}" text-anchor="${tx < W / 2 ? 'end' : 'start'}" font-size="11" fill="${numCol}" font-family="PlexMono, 'IBM Plex Mono', monospace">${u}</text>`;
+    for (const tx of [x0 - 8, x1 + 8]) s += `<text x="${tx}" y="${y + UH / 2 + 4}" text-anchor="${tx < W / 2 ? 'end' : 'start'}" font-size="11" fill="${numCol}" font-family="PlexMono, 'IBM Plex Mono', monospace">${u}</text>`;
     if (o.interactive) s += `<rect class="slot" data-u="${u}" x="${x0 + RAIL}" y="${y}" width="${FW}" height="${UH}" fill="transparent"/>`;
   }
-  for (const d of r.devices.filter(inRack).sort((a, b) => a.u - b.u)) s += devSVG(r, d, o);
+  for (const d of r.devices.filter(x => inRack(x) && !isV(x)).sort((a, b) => a.u - b.u)) s += devSVG(r, d, o);
+  if (rear) for (const d of r.devices.filter(isV)) s += devSVG(r, d, o);
   if (leads) s += leadsSVG(r);
   if (o.interactive) s += '<g id="hov" pointer-events="none"></g><g id="ghost" pointer-events="none"></g>';
   return { W, H, body: s };
@@ -1274,12 +1450,15 @@ function rackSVG(r, o = {}) {
 function svgDoc(parts, W, H, scale = 1) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><style>${FONT_CSS}</style>${parts}</svg>`;
 }
-function rackDoc(r) { return withFull(() => rackDoc0(r)); }
-function rackDoc0(r) { const x = rackSVG(r, { export: true }); return { svg: svgDoc(x.body, x.W, x.H), W: x.W, H: x.H }; }
+function rackDoc(r, f = face) { return withFull(() => f === 'both' ? bothDoc(r) : withFace(f, () => { const x = rackSVG(r, { export: true }); return { svg: svgDoc(x.body, x.W, x.H), W: x.W, H: x.H }; })); }
+function bothDoc(r) { // front and back side by side
+  const a = withFace('front', () => rackSVG(r, { export: true, both: true })), b = withFace('rear', () => rackSVG(r, { export: true })), gap = 40, W = a.W + gap + b.W, H = Math.max(a.H, b.H);
+  return { svg: svgDoc(`<rect width="${W}" height="${H}" fill="#fff"/>${a.body}<g transform="translate(${a.W + gap},0)">${b.body}</g>`, W, H), W, H };
+}
 function allRacksDoc() { return withFull(allRacksDoc0); }
 function allRacksDoc0() {
   let x = 0, H = 0, body = ''; const gap = 40;
-  for (const r of P.racks) { const s = rackSVG(r, { export: true }); body += `<g transform="translate(${x},0)">${s.body}</g>`; x += s.W + gap; H = Math.max(H, s.H); }
+  for (const r of P.racks) { const s = rackSVG(r, { export: true, both: false }); body += `<g transform="translate(${x},0)">${s.body}</g>`; x += s.W + gap; H = Math.max(H, s.H); }
   const W = x - gap;
   return { svg: svgDoc(`<rect width="${W}" height="${H}" fill="#fff"/>` + body, W, H), W, H };
 }
@@ -1340,6 +1519,7 @@ function renderTools() {
   if (view !== 'rack') { $('#tools').innerHTML = ''; $('#tools').hidden = true; return; }
   $('#tools').hidden = false;
   $('#tools').innerHTML = `<button class="btn sm tool-add" data-act="kit">+ Add kit</button>` + (pick ? `<span class="pickbar">Click the port to patch ${esc(portRef(pick.d, pick.p, false))} to<button class="btn sm" data-act="cancelpick">Cancel</button></span>` : '')
+    + `<span class="seg" title="Which side of the rack to show">${[['front', 'Front'], ['rear', 'Back']].map(([k, n]) => `<button data-face="${k}" class="${face === k ? 'on' : ''}">${n}</button>`).join('')}</span>`
     + `<span class="lbl">Colour ports by</span><span class="seg">${[['status', 'Status'], ['vlan', 'VLAN'], ['cable', isPhone() ? 'Cable' : 'Cable colour']].map(([k, n]) => `<button data-cb="${k}" class="${colourBy === k ? 'on' : ''}">${n}</button>`).join('')}</span>`
     + `<label><input type="checkbox" id="t-leads" ${leads ? 'checked' : ''}> ${isPhone() ? 'Leads' : 'Patch leads'}</label>`
     + `<span class="zoom"><button data-z="-" title="Zoom out">−</button>${isPhone() ? '<button class="w" data-z="fit">Fit</button>' : '<button class="w" data-z="fit" title="Fit the rack to the width">Fit width</button><button class="w" data-z="all" title="Show the whole rack">Whole rack</button>'}<button data-z="+" title="Zoom in">+</button></span>`
@@ -1359,24 +1539,27 @@ function fitZoom(mode) {
   else zoom = clamp(zh >= zw * .6 ? Math.min(zw, zh) : zw, .25, 1.8);  // whole rack when that keeps it readable
 }
 
-function kitIcon(type, w = 64) { return withFull(() => kitIcon0(type, w)); }
+function kitIcon(type, w = 64) { return withFull(() => withFace('front', () => kitIcon0(type, w))); }
 function kitIcon0(type, w) {
-  const c = CAT_BY[type], d = { type, h: c.h, groups: c.groups.map((gr, i) => ({ ...gr, id: 'i' + i })), ports: {}, label: '', model: '' };
-  const H = c.h * UH - 2, ports = layoutPorts(d, FW, H);
+  const c = CAT_BY[type], d = { type, h: c.h || 1, groups: c.groups.map((gr, i) => ({ ...gr, id: 'i' + i })), ports: {}, label: '', model: '', psu: 0 };
+  const H = (c.h || 1) * UH - 2, ports = layoutPorts(d, FW, H, LBLW, 24, true);
   let s = `<rect width="${FW}" height="${H}" rx="3" fill="${c.face}"/><rect width="16" height="${H}" fill="#4a5258"/><rect x="${FW - 16}" width="16" height="${H}" fill="#4a5258"/>` + devArt(c, d, H);
   s += `<rect x="26" y="${H / 2 - 7}" width="100" height="6" rx="2" fill="#a9b5b9" opacity=".7"/>`;
   for (const p of ports) s += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="1" fill="${p.kind === 'lc' || p.kind === 'sc' ? '#2b5f66' : p.kind.startsWith('sfp') ? '#59626a' : p.kind === 'pwr' ? '#111' : '#0c0e10'}" stroke="#6b757c" stroke-width="1"/>`;
   return `<svg viewBox="0 0 ${FW} ${H}" style="width:${w}px" aria-hidden="true">${s}</svg>`;
 }
 function kitThumb(type) { // a close-up of the left part of the face, so ports are visible at list size
-  const c = CAT_BY[type], H = c.h * UH - 2;
+  const c = CAT_BY[type], H = (c.h || 1) * UH - 2;
+
   return kitIcon(type, 72).replace(`viewBox="0 0 820 ${H}"`, `viewBox="0 0 400 ${H}"`);
 }
 function kitSummary(c) {
-  const gs = c.groups.filter(gr => !gr.panel && !gr.rear);
+  const gs = c.groups.filter(gr => !gr.panel);
   if (c.look === 'icx') return ' · 2 Ethernet (' + c.speed + ') and console, on the back';
-  const t = gs.map(gr => gr.count + ' ' + (gr.mg ? 'multi-gig' : gr.kind === 'rj45' && c.family === 'at' ? '× 1G' : KINDS[gr.kind].name)).join(', ');
-  return (t ? ' · ' + t : '') + (c.groups.some(gr => gr.poe) ? ', PoE+' : '') + (c.body ? ` · ${c.body} mm body` : '');
+  if (c.art === 'drawer') return ' · holds 6 IP-ACM v2 boards, label windows on the front';
+  if (c.look === 'avg') return ` · ${c.bays} drive bays · ${gs.filter(gr => gr.name !== 'iDRAC').map(gr => gr.count + ' × ' + (gr.kind === 'sfpp' ? '10G SFP+' : '1G')).join(' + ')}, iDRAC · ${c.psu} PSU${c.psu > 1 ? 's' : ''}`;
+  const t = gs.map(gr => gr.count + ' ' + (gr.mg ? 'multi-gig' : gr.kind === 'rj45' && c.family === 'at' ? '× 1G' : gr.kind === 'pwr' ? (gr.prefix === 'C19-' ? '× C19' : '× outlets') : KINDS[gr.kind].name)).join(', ');
+  return (t ? ' · ' + t : '') + (c.groups.some(gr => gr.poe) ? ', PoE+' : '') + (c.body ? ` · ${c.body} mm body` : '') + (c.groups.length && c.groups.every(gr => gr.rear) ? ', on the back' : '');
 }
 function renderLib() {
   const q = $('#lib-q').value.trim().toLowerCase();
@@ -1384,7 +1567,7 @@ function renderLib() {
   for (const [cat, nm] of CATS) {
     const items = CATALOG.filter(c => c.cat === cat && (!q || (c.name + ' ' + (c.model || '') + ' ' + nm).toLowerCase().includes(q)));
     if (!items.length) continue;
-    s += `<div class="lcat">${nm}</div>` + items.map(c => `<button class="kit" draggable="true" data-kit="${c.id}">${kitThumb(c.id)}<span>${esc(c.name)}<small>${c.cat === 'onshelf' ? 'On a shelf' : c.half ? c.h + 'U, half width' : c.h + 'U'}${kitSummary(c)}</small></span></button>`).join('');
+    s += `<div class="lcat">${nm}</div>` + items.map(c => `<button class="kit" draggable="true" data-kit="${c.id}">${kitThumb(c.id)}<span>${esc(c.name)}<small>${c.cat === 'onshelf' ? 'On a shelf' : c.acm ? 'Goes in an IP-ACM drawer' : c.vert ? '0U, at the back of the rack' : c.half ? c.h + 'U, half width' : c.h + 'U'}${kitSummary(c)}</small></span></button>`).join('');
   }
   $('#lib-list').innerHTML = s || '<p class="note">No kit matches.</p>';
 }
@@ -1419,7 +1602,8 @@ function rackPanel(r) {
     <div class="stats"><div><b>${usedU(r)}U</b><small>used of ${r.u}U</small></div><div><b>${used}</b><small>ports in use</small></div><div><b>${ports - used}</b><small>ports free</small></div></div>
     ${bad.length ? `<div class="warnbox">${bad.map(d => esc(d.label)).join(', ')} ${bad.length > 1 ? "don't" : "doesn't"} fit or ${bad.length > 1 ? 'overlap' : 'overlaps'} other kit. Move ${bad.length > 1 ? 'them' : 'it'} or make the rack bigger.</div>` : ''}
     <div class="sec">In this rack</div>
-    ${devs.length ? `<div class="rlist">${devs.map(d => `<button data-seldev="${d.id}"><span class="u mono">${shelfOf(d) ? '&nbsp;&nbsp;↳' : 'U' + uRange(d)}</span><span class="t"><b>${esc(d.label)}</b> ${esc(d.model || devName(d))}${SIDE_TXT[sideOf(d)] && inRack(d) ? ` <small style="color:var(--ink3)">(${SIDE_TXT[sideOf(d)]})</small>` : ''}</span></button>`).join('')}</div>` : '<p class="note">Nothing in this rack yet. Drag kit from the list on the left.</p>'}
+    ${devs.length ? `<div class="rlist">${devs.map(d => `<button data-seldev="${d.id}"><span class="u mono">${shelfOf(d) ? '&nbsp;&nbsp;↳' : isV(d) ? '0U ' + (d.v === 'right' ? 'R' : 'L') : 'U' + uRange(d)}</span>
+<span class="t"><b>${esc(d.label)}</b> ${esc(d.model || devName(d))}${SIDE_TXT[sideOf(d)] && inRack(d) ? ` <small style="color:var(--ink3)">(${SIDE_TXT[sideOf(d)]})</small>` : ''}</span></button>`).join('')}</div>` : '<p class="note">Nothing in this rack yet. Drag kit from the list on the left.</p>'}
     <div class="btns" style="margin-top:14px"><button class="btn" data-act="duprack">Duplicate rack</button><button class="btn danger" data-act="delrack" ${P.racks.length < 2 ? 'disabled' : ''}>Delete rack</button></div>`;
 }
 function devPanel(d) {
@@ -1427,26 +1611,32 @@ function devPanel(d) {
   const used = ps.filter(p => portStatus(d, p.id) !== 'free').length;
   const others = [];
   for (const rr of P.racks) for (const o of orderedDevs(rr)) if (o.id !== d.id && portList(o).length) others.push([o.id, (rr !== r ? rr.name + ' / ' : '') + o.label]);
-  const sh = shelfOf(d), shelves = r.devices.filter(x => isShelf(x) && inRack(x) && x.id !== d.id);
-  const posSel = !isShelf(d) && (sh || shelves.length) ? fld('Where', 'pos', sh ? sh.id : '', { select: [['', 'In the rack'], ...shelves.map(x => [x.id, 'On shelf ' + x.label + ' (U' + uRange(x) + ', ' + (100 - shelfUsed(x, d.id)) + '% free)'])] }) : '';
+  const sh = shelfOf(d), shelves = r.devices.filter(x => isShelf(x) && inRack(x) && x.id !== d.id && accepts(x, d.type));
+  const posSel = !isShelf(d) && !isV(d) && (sh || shelves.length) ? fld('Where', 'pos', sh ? sh.id : '', { select: [...(c.acm ? [] : [['', 'In the rack']]), ...shelves.map(x => [x.id, (isDrawer(x) ? 'In drawer ' : 'On shelf ') + x.label + ' (U' + uRange(x) + ', ' + (isDrawer(x) ? (CAT_BY[x.type].slots - shelfItems(x).filter(y => y.id !== d.id).length) + ' slots free' : (100 - shelfUsed(x, d.id)) + '% free') + ')'])] }) : '';
+  const rackSel = fld('Rack', 'rack', r.id, { select: P.racks.map(x => [x.id, x.name]) });
   return `<div class="ptitle"><span class="ico">${kitThumb(d.type)}</span><div><h2>${esc(d.label || c.name)}</h2><p>${esc(c.name)} · ${esc(r.name)} ${esc(posTxt(d))}</p></div></div>
   ${badDev(r, d) ? `<div class="warnbox">${isShelf(d) && shelfUsed(d) > 100 ? `The kit on this shelf takes ${shelfUsed(d)}% of its width. Make some of it narrower or move it to another shelf.` : "This doesn't fit here: it overlaps other kit or runs past the top of the rack."}</div>` : ''}
   <div data-scope="dev">
     <div class="g2">${fld('Label', 'label', d.label)}${c.family ? fld('Model', 'ftype', d.type, { select: CATALOG.filter(x => x.family === c.family).map(x => [x.id, x.model]) }) : fld('Model', 'model', d.model, { ph: c.name })}</div>
     ${c.family && !stdPorts(d) ? `<div class="warnbox">This ${esc(c.model)} has a port layout from an older version or one you changed. <button class="btn sm" data-act="stdports">Use the ${esc(c.model)} faceplate</button></div>` : ''}
     ${posSel}
-    ${sh ? `<div class="g2">${fld('Width on the shelf (%)', 'sw', swOf(d), { type: 'number', min: 5, max: 100, hint: 'Of the shelf width' })}<div></div></div>`
+    ${isV(d) ? `<div class="g2">${fld('Mounted', 'vside', d.v || 'left', { select: [['left', 'Back, left side'], ['right', 'Back, right side']] })}${rackSel}</div><p class="note">0U PDUs show in the Back view. Two fit on each side.</p>`
+      : sh && isDrawer(sh) ? `<div class="g2">${fld('Slot in the drawer', 'slot', d.slot, { select: Array.from({ length: CAT_BY[sh.type].slots }, (_, i) => { const k = i + 1, o = shelfItems(sh).find(x => x.slot === k && x !== d); return [k, 'Slot ' + k + (o ? ' (swap with ' + o.label + ')' : '')]; }) })}<div></div></div>
+    ${fld('Label on the drawer front', 'tag', d.tag, { area: 1, ph: 'e.g. D01 Reception main door', hint: 'Shows in this board\'s window on the drawer front. Start a new line for each line of text.' })}`
+      : sh ? `<div class="g2">${fld('Width on the shelf (%)', 'sw', swOf(d), { type: 'number', min: 5, max: 100, hint: 'Of the shelf width' })}<div></div></div>`
       : `<div class="g3">${fld('Lowest U', 'u', d.u, { type: 'number', min: 1, max: r.u })}${fld('Height (U)', 'h', d.h, { type: 'number', min: 1, max: 20 })}${fld('Rack', 'rack', r.id, { select: P.racks.map(x => [x.id, x.name]) })}</div>
     ${isShelf(d) ? '' : fld('Width', 'side', sideOf(d), { select: [['full', 'Full width (19")'], ['left', 'Half width, left side'], ['right', 'Half width, right side']] })}`}
-    ${isShelf(d) ? `<div class="sec">On this shelf · ${shelfUsed(d)}% of the width used</div>${shelfItems(d).length ? `<div class="rlist">${shelfItems(d).map(x => `<button data-seldev="${x.id}"><span class="u mono">${swOf(x)}%</span><span class="t"><b>${esc(x.label)}</b> ${esc(x.model || devName(x))}</span></button>`).join('')}</div>` : '<p class="note">Nothing yet. Drag shelf kit onto it, or add it from the Shelf kit list while this shelf is selected.</p>'}` : ''}
+    ${isDrawer(d) ? drawerSec(d) : isShelf(d) ? `<div class="sec">On this shelf · ${shelfUsed(d)}% of the width used</div>${shelfItems(d).length ? `<div class="rlist">${shelfItems(d).map(x => `<button data-seldev="${x.id}"><span class="u mono">${swOf(x)}%</span><span class="t"><b>${esc(x.label)}</b> ${esc(x.model || devName(x))}</span></button>`).join('')}</div>` : '<p class="note">Nothing yet. Drag shelf kit onto it, or add it from the Shelf kit list while this shelf is selected.</p>'}` : ''}
     <div class="g2">${fld('IP address', 'ip', d.ip, { ph: 'e.g. 10.0.0.5' })}${fld('Serial no.', 'serial', d.serial)}</div>
     ${fld('Notes', 'notes', d.notes, { area: 1, ph: 'Firmware, licences, warranty…' })}
+    ${powerSec(d)}
   </div>
+
   <div class="btns"><button class="btn" data-act="dup">Duplicate</button>${sh ? '<button class="btn" data-act="sl" title="Move left along the shelf">◀ Left</button><button class="btn" data-act="sr" title="Move right along the shelf">Right ▶</button>' : '<button class="btn" data-act="up" title="Up 1U">▲ Up</button><button class="btn" data-act="down" title="Down 1U">▼ Down</button>'}<button class="btn danger" data-act="del">Delete</button></div>
   ${ps.length ? `<div class="sec"><span>Ports · ${used} of ${ps.length} in use</span></div>
   <div class="chips">${ps.map(p => { const st = portStatus(d, p.id); return `<button data-selport="${p.id}" class="${st === 'free' ? 'free' : ''}" style="${st === 'free' ? '' : `background:${portFill(d, p.id)}`}" title="${esc(tipText(d, p))}">${esc(p.name)}</button>`; }).join('')}</div>` : ''}
-  <div class="sec"><span>Port layout</span><button class="btn sm" data-act="addgrp">Add ports</button></div>
-  ${d.groups.map(gr => `<div class="grp" data-grp="${gr.id}">
+  ${isShelf(d) ? '' : `<div class="sec"><span>Port layout</span><button class="btn sm" data-act="addgrp">Add ports</button></div>`}
+  ${isShelf(d) ? '' : d.groups.map(gr => `<div class="grp" data-grp="${gr.id}">
     <label><span>Type</span><select data-gk="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${gr.kind === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
     <label><span>Count</span><input data-gk="count" type="number" min="1" max="96" value="${gr.count}"></label>
     <label><span>First no.</span><input data-gk="start" type="number" min="0" max="999" value="${gr.start}"></label>
@@ -1462,7 +1652,32 @@ function devPanel(d) {
     <button class="btn pri" data-act="bulk">Patch ports</button></div>` : ''}
   ${ps.length ? `<div class="btns"><button class="btn danger" data-act="clearports">Clear all port allocations</button></div>` : ''}`;
 }
+function drawerSec(d) { // the six slots of an IP-ACM drawer, with their labels
+  const n = CAT_BY[d.type].slots, items = shelfItems(d);
+  return `<div class="sec"><span>In this drawer · ${items.length} of ${n} IP-ACMs</span><button class="btn sm" data-act="drawopen">${d.open ? 'Show it shut' : 'Show it open'}</button></div>
+  <p class="note" style="margin-top:0">The label text shows in each board's window on the drawer front.</p>
+  <div class="acms">${Array.from({ length: n }, (_, i) => { const k = i + 1, it = items.find(x => x.slot === k);
+    return it ? `<div class="acmrow" data-acm="${it.id}"><span class="u mono">${k}</span><input data-ak="label" value="${esc(it.label)}" placeholder="Label" aria-label="Slot ${k} label"><input data-ak="tag" value="${esc((it.tag || '').replace(/\n/g, ' / '))}" placeholder="Door / area" aria-label="Slot ${k} label text"><button class="btn sm" data-seldev="${it.id}" title="Ports, IP address and notes">Edit</button></div>`
+      : `<div class="acmrow empty"><span class="u mono">${k}</span><span class="note">Empty</span><button class="btn sm" data-act="addacm" data-slot="${k}">+ IP-ACM</button></div>`; }).join('')}</div>`;
+}
+function powerSec(d) { // which UPS / PDU outlet feeds each power inlet, and what each outlet feeds
+  const c = CAT_BY[d.type] || {}, r = rackOf(d.id), ps = portList(d);
+  let s = '';
+  const outs = ps.filter(p => p.kind === 'pwr');
+  if (outs.length) s += `<div class="sec">Outlets · ${outs.filter(p => pdata(d, p.id).link).length} of ${outs.length} feeding kit</div><div class="rlist">${outs.map(p => { const x = pdata(d, p.id); return `<button data-selport="${p.id}"><span class="u mono">${esc(p.name)}</span><span class="t">${x.link ? '<b>' + esc(portRef(x.link.d, x.link.p, false)) + '</b>' : x.ext ? esc(x.ext) : '<small style="color:var(--ink3)">free</small>'}</span></button>`; }).join('')}</div>`;
+  if (c.cat === 'patch' || (c.art && c.art !== 'fan')) return s;
+  const inl = ps.filter(p => p.kind === 'inlet');
+  const srcs = orderedDevs(r).filter(o => o.id !== d.id && portList(o).some(p => p.kind === 'pwr'));
+  s += `<div class="sec"><span>Power · which outlet feeds it</span></div>
+    <div class="g2">${fld('Power inlets (PSUs)', 'psu', psuOf(d), { type: 'number', min: 0, max: 4 })}<div></div></div>`;
+  if (inl.length && !srcs.length) s += `<p class="note">Add a UPS or PDU to ${esc(r.name)} to choose the outlet. Vertical PDUs are in the Power list.</p>`;
+  else s += inl.map(p => { const x = pdata(d, p.id), cur = x.link ? x.link.d + '|' + x.link.p : '';
+    return `<label class="f"><span>${esc(p.name)}</span><select data-pw="${p.id}"><option value="">Not plugged in</option>${srcs.map(o => `<optgroup label="${esc(o.label + ' · ' + (o.model || devName(o)))}">${portList(o).filter(q => q.kind === 'pwr').map(q => { const y = pdata(o, q.id), v = o.id + '|' + q.id, busy = y.link && v !== cur;
+      return `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(o.label + ' ' + q.name)}${busy ? ' (in use: ' + esc(portRef(y.link.d, y.link.p, false)) + ')' : ''}</option>`; }).join('')}</optgroup>`).join('')}</select></label>`; }).join('');
+  return s;
+}
 function fillBulkTo() {
+
   const s = $('#bk-dev'), t = $('#bk-to'); if (!s || !t) return;
   const o = devOf(s.value); t.innerHTML = portList(o).map(p => `<option value="${p.id}">${esc(p.name)}${portStatus(o, p.id) !== 'free' ? ' (in use)' : ''}</option>`).join('');
 }
@@ -1630,12 +1845,21 @@ function layoutRows() {
   const out = [];
   for (const r of P.racks) for (const d of orderedDevs(r)) {
     const ps = portList(d), used = ps.filter(p => portStatus(d, p.id) !== 'free').length;
-    out.push([r.name, r.location || '', posShort(d), inRack(d) ? d.h : '', d.label, devName(d), d.model || '', d.ip || '', d.serial || '', ps.length ? `${used} / ${ps.length}` : '', d.notes || '']);
+    out.push([r.name, r.location || '', posShort(d), inRack(d) && !isV(d) ? d.h : '', d.label, (d.tag || '').replace(/\n/g, ' / '), devName(d), d.model || '', d.ip || '', d.serial || '', ps.length ? `${used} / ${ps.length}` : '', d.notes || '']);
   }
   return out;
 }
-function posShort(d) { const sh = shelfOf(d); return sh ? `On ${sh.label}` : uRange(d).replace('–', '-') + (sideOf(d) === 'left' ? ' L' : sideOf(d) === 'right' ? ' R' : ''); }
-const LCOLS = ['Rack', 'Location', 'U', 'Height (U)', 'Label', 'Kit', 'Model', 'IP address', 'Serial no.', 'Ports used', 'Notes'];
+function posShort(d) { const sh = shelfOf(d); if (isV(d)) return '0U ' + (d.v === 'right' ? 'R' : 'L'); return sh ? (isDrawer(sh) ? `${sh.label} slot ${d.slot}` : `On ${sh.label}`) : uRange(d).replace('–', '-') + (sideOf(d) === 'left' ? ' L' : sideOf(d) === 'right' ? ' R' : ''); }
+const LCOLS = ['Rack', 'Location', 'U', 'Height (U)', 'Label', 'Label text', 'Kit', 'Model', 'IP address', 'Serial no.', 'Ports used', 'Notes'];
+function powerRows() { // every power inlet and the outlet that feeds it
+  const out = [];
+  for (const r of P.racks) for (const d of orderedDevs(r)) for (const p of portList(d).filter(q => q.kind === 'inlet')) {
+    const x = pdata(d, p.id), o = x.link && devOf(x.link.d), op = o && portById(o, x.link.p);
+    out.push([r.name, posShort(d), d.label, d.model || devName(d), p.name, o ? o.label : '', op ? op.name : '', o ? (o.model || devName(o)) : '', x.ext || '', x.cable || '']);
+  }
+  return out;
+}
+const PCOLS = ['Rack', 'U', 'Device', 'Model', 'Inlet', 'Fed from', 'Outlet', 'Source kit', 'Outside / notes', 'Cable ID'];
 
 function csvCell(v) { v = String(v ?? ''); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 function exportCSV(free) {
@@ -1694,20 +1918,21 @@ function exportXLSX(free) {
     { name: 'Port allocation', cols: TCOLS, rows: tableRows(free).map(rowVals) },
     { name: 'Cable schedule', cols: CCOLS, rows: cableRows() },
     { name: 'Rack layout', cols: LCOLS, rows: layoutRows() },
+    { name: 'Power', cols: PCOLS, rows: powerRows() },
   ]);
   saveBlob(fileBase() + '-port-allocation.xlsx', blob, [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]);
 }
-async function exportPNG(all) {
+async function exportPNG(all, both) {
   try {
-    const x = all ? allRacksDoc() : rackDoc(curRack());
+    const x = all ? allRacksDoc() : rackDoc(curRack(), both ? 'both' : face);
     const c = await svgToPng(x.svg, x.W, x.H, 2);
-    c.toBlob(b => saveBlob((all ? fileBase() + '-racks' : fileBase() + '-' + curRack().name) + '.png', b, [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }]), 'image/png');
+    c.toBlob(b => saveBlob((all ? fileBase() + '-racks' : fileBase() + '-' + curRack().name) + (both ? '-front-and-back' : face === 'rear' && !all ? '-back' : face === 'rear' ? '-back' : '') + '.png', b, [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }]), 'image/png');
   } catch (e) { toast("Couldn't make the picture."); }
 }
 async function exportRackPDF() {
-  const r = curRack(), x = rackDoc(r), c = await svgToPng(x.svg, x.W, x.H, 2.2);
-  const M = 10, pw = 297, ph = 420, s = Math.min((pw - M * 2) / x.W, (ph - M * 2 - 8) / x.H);
-  const doc = new jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a3', compress: true });
+  const r = curRack(), x = rackDoc(r, 'both'), c = await svgToPng(x.svg, x.W, x.H, 2.2);
+  const land = x.W > x.H, M = 10, pw = land ? 420 : 297, ph = land ? 297 : 420, s = Math.min((pw - M * 2) / x.W, (ph - M * 2 - 8) / x.H);
+  const doc = new jspdf.jsPDF({ orientation: land ? 'landscape' : 'portrait', unit: 'mm', format: 'a3', compress: true });
   doc.addImage(c.toDataURL('image/png'), 'PNG', (pw - x.W * s) / 2, M, x.W * s, x.H * s);
   doc.setFontSize(8); doc.setTextColor(124, 138, 136); doc.text(pdfTxt([P.name, P.site, new Date().toLocaleDateString('en-GB')].filter(Boolean).join('  ·  ')), M, ph - 6);
   saveBlob(fileBase() + '-' + r.name + '.pdf', doc.output('blob'), [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]);
@@ -1756,8 +1981,8 @@ async function exportPDF(free) {
   for (const r of P.racks) {
     if (!first) doc.addPage(); first = false;
     header(r.name + (r.location ? ' - ' + r.location : '') + ' - rack layout');
-    const x = rackDoc(r), c = await svgToPng(x.svg, x.W, x.H, 2.2);
-    const maxH = PH - M * 2 - 20, maxW = 225;
+    const x = rackDoc(r, 'both'), c = await svgToPng(x.svg, x.W, x.H, 2.2);
+    const maxH = PH - M * 2 - 20, maxW = 262;
     const s = Math.min(maxW / x.W, maxH / x.H), w = x.W * s, h = x.H * s;
     doc.addImage(c.toDataURL('image/png'), 'PNG', M, M + 18, w, h);
     const rows = orderedDevs(r).map(d => { const ps = portList(d); return [posShort(d), d.label, d.model || devName(d), d.ip || '', ps.length ? ps.filter(p => portStatus(d, p.id) !== 'free').length + '/' + ps.length : '']; });
@@ -1767,7 +1992,14 @@ async function exportPDF(free) {
   doc.addPage(); header('Port allocation');
   const tw = [.05, .025, .055, .1, .035, .045, .055, .1, .13, .11, .035, .045, .05, .035, .025, .105];
   pdfTable(doc, M + 18, TCOLS.map((h, i) => ({ h, w: tw[i] })), tableRows(free).map(rowVals), { left: M, right: PW - M, bottom: PH - M, top: M + 18, header: () => header() });
+  const pr = powerRows();
+  if (pr.length) {
+    doc.addPage(); header('Power schedule');
+    const pcw = [.07, .07, .1, .17, .07, .1, .07, .15, .14, .06];
+    pdfTable(doc, M + 18, PCOLS.map((h, i) => ({ h, w: pcw[i] })), pr, { left: M, right: PW - M, bottom: PH - M, top: M + 18, header: () => header() });
+  }
   const cr = cableRows();
+
   if (cr.length) {
     doc.addPage(); header('Cable schedule');
     const cw = [.07, .07, .1, .06, .07, .1, .06, .07, .07, .05, .29];
@@ -1785,7 +2017,11 @@ function saveFile() {
 function loadProject(o) {
   if (!o || !Array.isArray(o.racks) || !o.racks.length) throw new Error('not a rack design');
   delete o.app;
-  for (const r of o.racks) { r.id = r.id || uid(); r.devices = r.devices || []; r.u = +r.u || 42; for (const d of r.devices) { d.ports = d.ports || {}; d.groups = d.groups || []; if (!CAT_BY[d.type]) d.type = 'custom'; } }
+  for (const r of o.racks) { r.id = r.id || uid(); r.devices = r.devices || []; r.u = +r.u || 42; for (const d of r.devices) {
+    d.ports = d.ports || {}; d.groups = d.groups || []; if (!CAT_BY[d.type]) d.type = 'custom';
+    const cg = CAT_BY[d.type].groups;   // designs from before the back view: put ports that are on the back of this kit there
+    d.groups.forEach((gr, i) => { const c = cg[i]; if (c && c.rear && gr.rear === undefined && c.kind === gr.kind && (c.prefix || '') === (gr.prefix || '')) gr.rear = true; });
+  } }
   return o;
 }
 
@@ -1800,20 +2036,24 @@ function example() {
   const pp2 = add('cat6-24', 18); add('cm', 17);
   const sw2 = add('x230-28', 16, { label: 'SW-02', ip: '10.10.0.3' }); add('blank', 15);
   const srv = add('ccure', 14, { label: 'SRV-01', ip: '10.10.40.10', model: 'C•CURE 9000 MAS' });
-  const nvr = add('avg', 12, { label: 'NVR-01', ip: '10.10.30.10', model: 'Avigilon NVR5 Premium' });
-  add('kvm', 11);
+  const nvr = add('avg5-prm', 12, { label: 'NVR-01', ip: '10.10.30.10' });
+  const kvm = add('kvm', 11);
   const icx1 = add('icx', 10, { side: 'left', model: 'ICX-500' }), icx2 = add('icx', 10, { side: 'right', model: 'ICX-500' });
   add('blank', 9);
+  const acd = add('acm-drawer', 7, { label: 'ACD-01' });
+  const acms = [['D01 Reception\nmain door', '10.10.40.21'], ['D02 Office\ncorridor', '10.10.40.22'], ['D03 Comms room', '10.10.40.23'], ['D04 Plant room', '10.10.40.24']].map(([tag, ip], i) => { const d = makeDev('ipacm', acd.u); Object.assign(d, { on: acd.id, slot: i + 1, tag, ip, label: 'ACM-0' + (i + 1) }); r.devices.push(d); reindex(); return d; });
   const sh = add('shelf', 5);
   const onShelf = (type, o) => { const d = makeDev(type, sh.u); Object.assign(d, { on: sh.id, sw: CAT_BY[type].sw, slot: r.devices.filter(x => x.on === sh.id).length + 1 }, o); r.devices.push(d); reindex(); return d; };
   const rtr = onShelf('router', { model: 'Draytek Vigor 2865' }); const psu = onShelf('psu-box', { model: '12V 5A PSU' }); onShelf('minipc', { label: 'PC-01', model: 'Ops workstation' });
-  const ups = add('ups2', 3, { label: 'UPS-01', ip: '10.10.10.5', model: 'APC SMT3000RMI2UNC' });
+  const ups = add('ups3', 3, { label: 'UPS-01', ip: '10.10.10.5', model: 'APC SMT3000RMI2UNC' });
   const pdu = add('pdu', 1);
+  const pda = add('vpdu-24', 0, { v: 'left', vi: 1, label: 'PDU-A', h: 0 }), pdb = add('vpdu-16', 0, { v: 'right', vi: 1, label: 'PDU-B', h: 0 });
   reindex();
   const P1 = d => portList(d);
   const cams = ['Car park N', 'Car park S', 'Gate 1', 'Gate 2', 'Reception', 'Loading bay', 'Corridor 1', 'Corridor 2', 'Plant room', 'Roof east'];
   cams.forEach((c, i) => { link(pp1, P1(pp1)[i].id, sw1, P1(sw1)[i].id); setPort(pp1, P1(pp1)[i].id, 'ext', `CAM-${String(i + 1).padStart(2, '0')} ${c}`); setPort(sw1, P1(sw1)[i].id, 'vlan', '30'); setPort(sw1, P1(sw1)[i].id, 'poe', true); setPort(sw1, P1(sw1)[i].id, 'colour', 'blue'); setPort(sw1, P1(sw1)[i].id, 'desc', `CAM-${String(i + 1).padStart(2, '0')}`); });
-  ['Door 1 Reception', 'Door 2 Office', 'Door 3 Comms', 'Door 4 Plant'].forEach((c, i) => { link(pp2, P1(pp2)[i].id, sw2, P1(sw2)[i].id); setPort(pp2, P1(pp2)[i].id, 'ext', 'ACM-0' + (i + 1) + ' ' + c); setPort(sw2, P1(sw2)[i].id, 'vlan', '40'); setPort(sw2, P1(sw2)[i].id, 'poe', true); setPort(sw2, P1(sw2)[i].id, 'colour', 'green'); setPort(sw2, P1(sw2)[i].id, 'desc', 'iSTAR ACM-0' + (i + 1)); });
+  ['Gate 1', 'Gate 2', 'Reception', 'Car park'].forEach((c, i) => { link(pp2, P1(pp2)[i].id, sw2, P1(sw2)[i].id); setPort(pp2, P1(pp2)[i].id, 'ext', 'Door station ' + c); setPort(sw2, P1(sw2)[i].id, 'vlan', '50'); setPort(sw2, P1(sw2)[i].id, 'poe', true); setPort(sw2, P1(sw2)[i].id, 'colour', 'purple'); setPort(sw2, P1(sw2)[i].id, 'desc', 'Intercom ' + c); });
+  acms.forEach((a, i) => { const sp = [4, 5, 6, 8][i]; link(a, P1(a)[0].id, sw2, P1(sw2)[sp].id); setPort(sw2, P1(sw2)[sp].id, 'vlan', '40'); setPort(sw2, P1(sw2)[sp].id, 'poe', true); setPort(sw2, P1(sw2)[sp].id, 'colour', 'green'); setPort(sw2, P1(sw2)[sp].id, 'desc', a.label + ' IP-ACM'); });
   link(nvr, P1(nvr)[0].id, sw1, P1(sw1)[12].id); setPort(sw1, P1(sw1)[12].id, 'desc', 'NVR-01 NIC1'); setPort(sw1, P1(sw1)[12].id, 'colour', 'yellow');
   link(nvr, P1(nvr)[1].id, sw1, P1(sw1)[13].id); setPort(sw1, P1(sw1)[13].id, 'desc', 'NVR-01 NIC2'); setPort(sw1, P1(sw1)[13].id, 'colour', 'yellow');
   link(srv, P1(srv)[0].id, sw2, P1(sw2)[7].id); setPort(sw2, P1(sw2)[7].id, 'vlan', '40'); setPort(sw2, P1(sw2)[7].id, 'colour', 'yellow'); setPort(sw2, P1(sw2)[7].id, 'desc', 'SRV-01 NIC1');
@@ -1823,12 +2063,18 @@ function example() {
   setPort(fpp, P1(fpp)[1].id, 'reserved', true); setPort(fpp, P1(fpp)[1].id, 'desc', 'Spare core uplink');
   setPort(pp1, P1(pp1)[10].id, 'reserved', true); setPort(pp1, P1(pp1)[10].id, 'desc', 'CAM-11 (phase 2)');
   setPort(pp1, P1(pp1)[11].id, 'faulty', true); setPort(pp1, P1(pp1)[11].id, 'notes', 'Failed test, re-terminate');
-  ['SW-01 PSU', 'SW-02 PSU', 'SRV-01 PSU1', 'NVR-01 PSU1', 'NVR-01 PSU2', 'KVM-01'].forEach((t, i) => setPort(ups, P1(ups)[1 + i].id, 'ext', t));
+  const inl = (d, n = 0) => P1(d).filter(p => p.kind === 'inlet')[n].id, out = (d, n) => P1(d).filter(p => p.kind === 'pwr')[n].id;
+  link(srv, inl(srv, 0), ups, out(ups, 0)); link(nvr, inl(nvr, 0), ups, out(ups, 1)); link(kvm, inl(kvm), ups, out(ups, 2)); link(sw1, inl(sw1), ups, out(ups, 3));
+  link(pda, inl(pda), ups, out(ups, 8)); setPort(pda, inl(pda), 'desc', 'Fed from UPS-01 C19');
+  link(srv, inl(srv, 1), pdb, out(pdb, 0)); link(nvr, inl(nvr, 1), pdb, out(pdb, 1)); link(sw2, inl(sw2), pda, out(pda, 0)); link(icx1, inl(icx1), pda, out(pda, 1)); link(icx2, inl(icx2), pda, out(pda, 2));
+  setPort(pdb, inl(pdb), 'ext', 'Wall socket B, 16A commando'); setPort(ups, inl(ups), 'ext', 'Wall socket A, 16A commando'); setPort(pdu, inl(pdu), 'ext', 'Wall socket C');
   link(icx1, P1(icx1)[0].id, sw2, P1(sw2)[10].id); setPort(sw2, P1(sw2)[10].id, 'vlan', '50'); setPort(sw2, P1(sw2)[10].id, 'desc', 'ICX-01 master');
   link(icx2, P1(icx2)[0].id, sw2, P1(sw2)[11].id); setPort(sw2, P1(sw2)[11].id, 'vlan', '50'); setPort(sw2, P1(sw2)[11].id, 'desc', 'ICX-02 redundant');
   setPort(rtr, P1(rtr)[0].id, 'ext', 'Broadband line, master socket'); link(rtr, P1(rtr)[1].id, sw1, P1(sw1)[15].id); setPort(sw1, P1(sw1)[15].id, 'desc', 'Router LAN'); setPort(sw1, P1(sw1)[15].id, 'vlan', '10');
   setPort(psu, P1(psu)[0].id, 'ext', 'Door release PSU feed');
-  setPort(pdu, P1(pdu)[0].id, 'ext', 'SRV-01 PSU2'); setPort(pdu, P1(pdu)[1].id, 'ext', 'Rack fans');
+  link(psu, inl(psu), pda, out(pda, 3)); link(rtr, inl(rtr), pda, out(pda, 4)); const pc = r.devices.find(x => x.label === 'PC-01'); link(pc, inl(pc), pda, out(pda, 5));
+  setPort(pdu, P1(pdu)[1].id, 'ext', 'Rack fans');
+
   sel = { rack: r.id, dev: null, port: null };
   reindex();
 }
@@ -1844,6 +2090,10 @@ function onStageDown(e) {
 function onStageClick(e) { if (lastPT === 'touch') stageAct(e, false); }
 function stageAct(e, canDrag) {
   const pEl = e.target.closest('.port'), dEl = e.target.closest('.dev');
+  const aEl = !pick && e.target.closest('[data-acmslot]');
+  if (aEl) { const [sid, k] = aEl.dataset.acmslot.split('|'); addToShelf('ipacm', devOf(sid), +k); openDetails(); return; }
+  const vEl = !pick && !dEl && e.target.closest('.vslot');
+  if (vEl) { toast('Add a vertical PDU from the Power list in Add kit, and it goes here.'); return; }
   if (pEl) {
     const [did, pid] = pEl.dataset.p.split('|'), d = devOf(did);
     if (pick) {
@@ -1852,14 +2102,15 @@ function stageAct(e, canDrag) {
       if (x.link && !confirm(`${d.label} port ${portById(d, pid).name} is already patched to ${portRef(x.link.d, x.link.p)}. Patch it here instead?`)) return;
       const kA = portById(a, pick.p).kind, kB = portById(d, pid).kind, fib = k => k === 'lc' || k === 'sc' || k.startsWith('sfp');
       change(() => link(a, pick.p, d, pid));
-      if ((kA === 'pwr') !== (kB === 'pwr') || (fib(kA) !== fib(kB) && !(kA.startsWith('sfp') || kB.startsWith('sfp')))) toast('Patched, but check the port types: ' + KINDS[kA].name + ' to ' + KINDS[kB].name + '.');
+      if (isPow(kA) !== isPow(kB) ||
+ (fib(kA) !== fib(kB) && !(kA.startsWith('sfp') || kB.startsWith('sfp')))) toast('Patched, but check the port types: ' + KINDS[kA].name + ' to ' + KINDS[kB].name + '.');
       else toast('Patched ' + portRef(pick.d, pick.p, false) + ' to ' + portRef(did, pid, false));
       sel = { rack: sel.rack, dev: pick.d, port: pick.p }; pick = null; render(); openDetails(); return;
     }
     sel.dev = did; sel.port = pid; render(); openDetails(); return;
   }
   if (dEl && !canDrag) { sel.dev = dEl.dataset.d; sel.port = null; render(); openDetails(); return; }
-  if (dEl && shelfOf(devOf(dEl.dataset.d))) { sel.dev = dEl.dataset.d; sel.port = null; render(); return; }
+  if (dEl && (shelfOf(devOf(dEl.dataset.d)) || isV(devOf(dEl.dataset.d)))) { sel.dev = dEl.dataset.d; sel.port = null; render(); return; }
   if (dEl) {
     const d = devOf(dEl.dataset.d), r = curRack(), pt = svgPt(e);
     drag = { d, el: dEl, start: pt, grab: (d.u + d.h - 1) - uAtY(r, pt.y), moved: false, nu: d.u, side: sideOf(d) };
@@ -1868,7 +2119,15 @@ function stageAct(e, canDrag) {
   }
   if (!pick && (sel.dev || sel.port)) { sel.dev = null; sel.port = null; render(); }
 }
-function onStageCancel() { if (drag) { drag = null; renderRack(); } }
+function showFace(d, pid) { // turn the rack round when the kit or port is on the other side
+  if (!d) return;
+  let f = null;
+  if (isV(d)) f = 'rear';
+  else if (pid) { const p = portById(d, pid); if (p) f = shelfOf(d) && isDrawer(shelfOf(d)) ? 'front' : grFace(p.gr); }
+  if (f && f !== face) { face = f; save(); requestAnimationFrame(() => { fitZoom(); renderRack(); }); }
+}
+function onStageCancel() {
+ if (drag) { drag = null; renderRack(); } }
 function onStageMove(e) {
   if (drag) {
     const r = curRack(), pt = svgPt(e);
@@ -1876,9 +2135,9 @@ function onStageMove(e) {
     drag.moved = true; drag.el.classList.add('drag'); hideTip();
     const top = clamp(uAtY(r, pt.y) + drag.grab, drag.d.h, r.u);
     drag.nu = top - drag.d.h + 1;
-    if (drag.side !== 'full') drag.side = pt.x < NUMW + RAIL + FW / 2 ? 'left' : 'right';
+    if (drag.side !== 'full') drag.side = sideAt(pt.x);
     const ok = placeOK(r, drag.nu, drag.d.h, drag.d.id, drag.side);
-    drag.el.setAttribute('transform', `translate(${NUMW + RAIL + (drag.side === 'right' ? FW / 2 : 0)},${PADT + (r.u - top) * UH + 1})`);
+    drag.el.setAttribute('transform', `translate(${RX() + ((drag.side === 'right') !== (face === 'rear') && drag.side !== 'full' ? FW / 2 : 0)},${PADT + (r.u - top) * UH + 1})`);
     drag.el.classList.toggle('bad', !ok);
     return;
   }
@@ -1897,17 +2156,26 @@ function onStageUp() {
   if (!same && placeOK(r, nu, d.h, d.id, side)) { change(() => { d.u = nu; if (side !== 'full') d.side = side; }); sel.dev = d.id; sel.port = null; render(); }
   else { if (!same) toast('Something is already in those U.'); render(); }
 }
+const sideAt = x => ((x < RX() + FW / 2) !== (face === 'rear')) ? 'left' : 'right';   // which half of the rack is under the pointer
 function addKit(type, u, side) {
   const r = curRack(), c = CAT_BY[type];
-  if (c.cat === 'onshelf' && u == null) { // shelf kit goes on the selected shelf, or the first with room, or a new shelf
+  if (c.vert) { // 0U PDU: on the side with fewer, at the back
+    const vs = vItems(r, 'left').length <= vItems(r, 'right').length ? 'left' : 'right';
+    if (vItems(r, vs).length >= 2) { toast(`Both sides of ${r.name} already have two 0U PDUs.`); return; }
+    let d; change(() => { d = makeDev(type, 0); d.u = 0; d.h = 0; d.v = side === 'left' || side === 'right' ? side : vs; d.vi = Math.max(0, ...vItems(r, d.v).map(x => x.vi || 0)) + 1; r.devices.push(d); });
+    sel.dev = d.id; sel.port = null;
+    if (face !== 'rear') { face = 'rear'; toast('0U PDUs hang at the back, so this is the Back view now.'); }
+    render(); fitZoom(); renderRack(); return;
+  }
+  if ((c.cat === 'onshelf' || c.acm) && u == null) { // shelf kit goes on the selected shelf, or the first with room, or a new shelf; IP-ACMs the same with drawers
     const cur = sel.dev && devOf(sel.dev), want = cur && (isShelf(cur) ? cur : shelfOf(cur));
-    const fits = sh => sh && rackOf(sh.id) === r && shelfUsed(sh) + (c.sw || 25) <= 100;
+    const fits = sh => sh && rackOf(sh.id) === r && accepts(sh, type) && (isDrawer(sh) ? freeSlot(sh) > 0 : shelfUsed(sh) + (c.sw || 25) <= 100);
     let sh = fits(want) ? want : r.devices.find(x => isShelf(x) && inRack(x) && fits(x));
     if (!sh) {
-      const spot = lowestFree(r, 2) || lowestFree(r, 1);
-      if (!spot) { toast(`No room for a shelf in ${r.name}.`); return; }
-      change(() => { sh = makeDev(lowestFree(r, 2) ? 'shelf' : 'shelf1', spot); r.devices.push(sh); });
-      reindex(); toast(`Added shelf ${sh.label} for it.`);
+      const spot = c.acm ? lowestFree(r, 2) : lowestFree(r, 2) || lowestFree(r, 1);
+      if (!spot) { toast(`No room for a ${c.acm ? '2U drawer' : 'shelf'} in ${r.name}.`); return; }
+      change(() => { sh = makeDev(c.acm ? 'acm-drawer' : lowestFree(r, 2) ? 'shelf' : 'shelf1', spot); r.devices.push(sh); });
+      reindex(); toast(`Added ${holderWord(sh)} ${sh.label} for it.`);
       const n = undoS.length; addToShelf(type, sh); if (undoS.length > n) undoS.pop(); // the shelf and the kit on it are one undo step
       return;
     }
@@ -1921,8 +2189,15 @@ function addKit(type, u, side) {
   change(() => { d = makeDev(type, spot.u, spot.side); r.devices.push(d); });
   sel.dev = d.id; sel.port = null; render();
 }
-function addToShelf(type, sh) {
+function addToShelf(type, sh, slot) {
   const r = rackOf(sh.id), c = CAT_BY[type], w = c.sw || (c.cat === 'onshelf' ? 25 : 100);
+  if (!accepts(sh, type)) { toast(isDrawer(sh) ? `Only IP-ACM boards go in ${sh.label}.` : `IP-ACMs go in an IP-ACM drawer, not on a shelf.`); render(); return; }
+  if (isDrawer(sh)) {
+    const k = slot && !shelfItems(sh).some(x => x.slot === slot) ? slot : freeSlot(sh);
+    if (!k) { toast(`${sh.label} is full: it holds ${CAT_BY[sh.type].slots} IP-ACMs.`); render(); return; }
+    let d; change(() => { d = makeDev(type, sh.u); d.on = sh.id; d.slot = k; d.tag = ''; r.devices.push(d); });
+    sel.dev = d.id; sel.port = null; if (face !== 'front') { face = 'front'; } render(); return;
+  }
   if (shelfUsed(sh) + w > 100) { toast(`Not enough room on ${sh.label}: ${100 - shelfUsed(sh)}% of its width is free.`); render(); return; }
   let d;
   change(() => { d = makeDev(type, sh.u); d.on = sh.id; d.sw = w; d.slot = shelfItems(sh).reduce((m, x) => Math.max(m, x.slot || 0), 0) + 1; r.devices.push(d); });
@@ -1930,12 +2205,16 @@ function addToShelf(type, sh) {
 }
 function shelfAt(r, u) { return r.devices.find(x => isShelf(x) && inRack(x) && u >= x.u && u <= x.u + x.h - 1); }
 function slideOnShelf(d, dir) {
-  const items = shelfItems(shelfOf(d)), i = items.indexOf(d), j = i + dir;
+  const sh = shelfOf(d);
+  if (isDrawer(sh)) { const k = d.slot + dir; if (k < 1 || k > CAT_BY[sh.type].slots) return; const o = shelfItems(sh).find(x => x.slot === k); change(() => { if (o) o.slot = d.slot; d.slot = k; }); return; }
+  const items = shelfItems(sh), i = items.indexOf(d), j = i + dir;
   if (j < 0 || j >= items.length) return;
   change(() => { [items[i], items[j]] = [items[j], items[i]]; items.forEach((x, k) => { x.slot = k + 1; }); });
 }
 function moveDev(d, du) {
   if (shelfOf(d)) return slideOnShelf(d, du > 0 ? 1 : -1);
+  if (isV(d)) { const list = vItems(rackOf(d.id), d.v || 'left'), i = list.indexOf(d), j = i + (du > 0 ? -1 : 1); if (j < 0 || j >= list.length) { toast(du > 0 ? 'Already at the top.' : 'Already at the bottom.'); return; } change(() => { [list[i], list[j]] = [list[j], list[i]]; list.forEach((x, k) => { x.vi = k + 1; }); }); return; }
+
   const r = rackOf(d.id); if (placeOK(r, d.u + du, d.h, d.id, sideOf(d))) change(() => { d.u += du; }); else toast(du > 0 ? 'No room above.' : 'No room below.');
 }
 
@@ -1943,6 +2222,17 @@ function onPanelChange(e) {
   const t = e.target, k = t.dataset.k, scope = t.closest('[data-scope]')?.dataset.scope;
   if (t.id === 'ln-dev') { const o = devOf(t.value), cur = devOf(sel.dev); $('#ln-port').innerHTML = o ? portList(o).map(p => { const x = pdata(o, p.id); return `<option value="${p.id}">${esc(p.name)}${x.link ? ' (patched)' : portStatus(o, p.id) !== 'free' ? ' (in use)' : ''}</option>`; }).join('') : ''; const first = o && portList(o).find(p => !pdata(o, p.id).link); if (first) $('#ln-port').value = first.id; return; }
   if (t.id === 'bk-dev') { fillBulkTo(); return; }
+  if (t.dataset.pw) { // power inlet -> outlet
+    const d = devOf(sel.dev), pid = t.dataset.pw;
+    if (!t.value) { change(() => unlink(d, pid)); return; }
+    const [oid, op] = t.value.split('|'), o = devOf(oid), y = pdata(o, op);
+    if (y.link && !(y.link.d === d.id && y.link.p === pid) && !confirm(`${o.label} ${portById(o, op).name} already feeds ${portRef(y.link.d, y.link.p, false)}. Plug ${d.label} in there instead?`)) { renderPanel(); return; }
+    change(() => link(d, pid, o, op)); toast(`${d.label} ${portById(d, pid).name} now fed from ${o.label} ${portById(o, op).name}.`); return;
+  }
+  if (t.dataset.ak) { // drawer label table
+    const it = devOf(t.closest('[data-acm]').dataset.acm), k2 = t.dataset.ak, v2 = t.value.trim();
+    change(() => { it[k2] = k2 === 'tag' ? v2.split(/\s*\/\s*/).join('\n') : v2; }, { panel: false }); return;
+  }
   if (t.closest('.grp')) {
     const d = devOf(sel.dev), gid = t.closest('.grp').dataset.grp, gk = t.dataset.gk;
     const gr = d.groups.find(x => x.id === gid); let v = t.value;
@@ -1972,6 +2262,11 @@ function onPanelChange(e) {
       if (!(nu >= 1) || !(nh >= 1) || !placeOK(r, nu, nh, d.id, sideOf(d))) { toast(nu + nh - 1 > r.u ? "That runs past the top of the rack." : 'Something is already in those U.'); t.value = d[k]; return; }
       change(() => { d.u = nu; d.h = nh; }); return;
     }
+    if (k === 'rack' && isV(d)) {
+      const nr = P.racks.find(x => x.id === v), side = vItems(nr, 'left').length <= vItems(nr, 'right').length ? 'left' : 'right';
+      if (vItems(nr, side).length >= 2) { toast(`No room for another 0U PDU in ${nr.name}.`); t.value = r.id; return; }
+      change(() => { r.devices = r.devices.filter(x => x !== d); d.v = side; d.vi = 99; nr.devices.push(d); }); sel.rack = nr.id; render(); return;
+    }
     if (k === 'rack') {
       const nr = P.racks.find(x => x.id === v), side = sideOf(d);
       const sp = placeOK(nr, d.u, d.h, null, side) ? { u: d.u, side } : freeSpot(nr, d.h, side !== 'full');
@@ -1980,6 +2275,19 @@ function onPanelChange(e) {
       change(() => { r.devices = r.devices.filter(x => !moving.includes(x)); d.u = sp.u; if (sp.side !== 'full') d.side = sp.side; else delete d.side; nr.devices.push(...moving); }); sel.rack = nr.id; render(); return;
     }
     if (k === 'ftype') { if (!swapType(d, v)) t.value = d.type; return; }
+    if (k === 'psu') {
+      const n = clamp(parseInt(v, 10) || 0, 0, 4), lost = portList(d).filter(p => p.kind === 'inlet' && p.n > n && d.ports[p.id]);
+      if (lost.length && !confirm(`${lost.map(p => p.name).join(', ')} ${lost.length > 1 ? 'are' : 'is'} plugged in or allocated and would be cleared. Carry on?`)) { t.value = psuOf(d); return; }
+      change(() => { d.psu = n; prune(d); }); return;
+    }
+    if (k === 'vside') {
+      if (vItems(r, v).filter(x => x !== d).length >= 2) { toast('Two PDUs are already on that side.'); t.value = d.v || 'left'; return; }
+      change(() => { d.v = v; d.vi = Math.max(0, ...vItems(r, v).map(x => x.vi || 0)) + 1; }); return;
+    }
+    if (k === 'slot') {
+      const sh = shelfOf(d), n = parseInt(v, 10), o = shelfItems(sh).find(x => x.slot === n && x !== d);
+      change(() => { if (o) o.slot = d.slot; d.slot = n; }); return;
+    }
     if (k === 'side') {
       if (!placeOK(r, d.u, d.h, d.id, v)) { toast(v === 'full' ? 'The other half of those U is in use.' : 'That half is in use.'); t.value = sideOf(d); return; }
       change(() => { if (v === 'full') delete d.side; else d.side = v; }); return;
@@ -1991,6 +2299,7 @@ function onPanelChange(e) {
         change(() => { delete d.on; delete d.slot; d.u = sp.u; if (sp.side !== 'full') d.side = sp.side; else delete d.side; }); return;
       }
       const sh = devOf(v), w = d.sw ? swOf(d) : (CAT_BY[d.type].sw || (CAT_BY[d.type].cat === 'onshelf' ? 25 : 100));
+      if (isDrawer(sh)) { const k2 = freeSlot(sh); if (!k2) { toast(`${sh.label} is full.`); t.value = d.on || ''; return; } change(() => { d.on = sh.id; d.slot = k2; }); return; }
       if (shelfUsed(sh, d.id) + w > 100) { toast(`Not enough room on ${sh.label}: ${100 - shelfUsed(sh, d.id)}% free.`); t.value = d.on || ''; return; }
       change(() => { d.on = sh.id; d.sw = w; delete d.side; d.slot = shelfItems(sh).filter(x => x !== d).reduce((m, x) => Math.max(m, x.slot || 0), 0) + 1; }); return;
     }
@@ -2010,13 +2319,17 @@ function onPanelChange(e) {
 }
 function onPanelClick(e) {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.seldev) { sel.dev = b.dataset.seldev; sel.port = null; render(); return; }
-  if (b.dataset.selport) { sel.port = b.dataset.selport; render(); return; }
+  if (b.dataset.seldev) { sel.dev = b.dataset.seldev; sel.port = null; showFace(devOf(sel.dev)); render(); return; }
+  if (b.dataset.selport) { sel.port = b.dataset.selport; showFace(devOf(sel.dev), sel.port); render(); return; }
   const act = b.dataset.act, d = sel.dev && devOf(sel.dev), r = curRack();
   switch (act) {
     case 'duprack': change(() => { const n = JSON.parse(JSON.stringify(r)); n.id = uid(); n.name = r.name + ' copy'; const map = {}; for (const x of n.devices) { map[x.id] = uid(); } for (const x of n.devices) { x.id = map[x.id]; if (x.on) x.on = map[x.on]; for (const k in x.ports) { const l = x.ports[k].link; if (l) { if (map[l.d]) l.d = map[l.d]; else delete x.ports[k].link; } } } P.racks.push(n); sel.rack = n.id; }); break;
     case 'delrack': if (P.racks.length > 1 && confirm(`Delete ${r.name} and everything in it?`)) change(() => { reindex(); for (const x of [...r.devices]) removeDev(x.id); P.racks = P.racks.filter(x => x !== r); sel.rack = P.racks[0].id; sel.dev = sel.port = null; }); break;
-    case 'dup': if (shelfOf(d)) { const sh = shelfOf(d); if (shelfUsed(sh) + swOf(d) > 100) { toast(`Not enough room on ${sh.label}.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.label = nextLabel(CAT_BY[d.type].pre); n.slot = (d.slot || 0) + .5; for (const k in n.ports) delete n.ports[k].link; rackOf(d.id).devices.push(n); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); }); reindex(); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); sel.dev = n.id; render(); break; }
+    case 'drawopen': change(() => { d.open = !d.open; }); break;
+    case 'addacm': addToShelf('ipacm', d, +b.dataset.slot); break;
+    case 'dup': if (isV(d)) { const rr = rackOf(d.id), side = vItems(rr, 'left').length <= vItems(rr, 'right').length ? 'left' : 'right'; if (vItems(rr, side).length >= 2) { toast('No room for another 0U PDU.'); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.v = side; n.vi = 99; n.label = nextLabel(CAT_BY[d.type].pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
+    if (shelfOf(d) && isDrawer(shelfOf(d))) { const sh = shelfOf(d), k = freeSlot(sh); if (!k) { toast(`${sh.label} is full.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.slot = k; n.label = nextLabel(CAT_BY[d.type].pre); n.tag = ''; for (const kk in n.ports) delete n.ports[kk].link; rackOf(d.id).devices.push(n); }); sel.dev = n.id; render(); break; }
+    if (shelfOf(d)) { const sh = shelfOf(d); if (shelfUsed(sh) + swOf(d) > 100) { toast(`Not enough room on ${sh.label}.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.label = nextLabel(CAT_BY[d.type].pre); n.slot = (d.slot || 0) + .5; for (const k in n.ports) delete n.ports[k].link; rackOf(d.id).devices.push(n); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); }); reindex(); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); sel.dev = n.id; render(); break; }
     { const c = CAT_BY[d.type]; const rr = rackOf(d.id); if (sideOf(d) !== 'full') { const sp = freeSpot(rr, d.h, true); if (!sp) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = sp.u; n.side = sp.side; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; } const above = placeOK(rr, d.u + d.h, d.h) ? d.u + d.h : lowestFree(rr, d.h); if (!above) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = above; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
     case 'stdports': swapType(d, d.type); break;
     case 'up': moveDev(d, 1); break;
@@ -2040,7 +2353,7 @@ function onPanelClick(e) {
     }
     case 'back': sel.port = null; render(); break;
     case 'prevport': case 'nextport': { const ps = portList(d), i = ps.findIndex(p => p.id === sel.port) + (act === 'nextport' ? 1 : -1); if (ps[i]) { sel.port = ps[i].id; render(); } break; }
-    case 'gopeer': { const x = pdata(d, sel.port).link; sel.rack = rackOf(x.d).id; sel.dev = x.d; sel.port = x.p; render(); break; }
+    case 'gopeer': { const x = pdata(d, sel.port).link; sel.rack = rackOf(x.d).id; sel.dev = x.d; sel.port = x.p; showFace(devOf(x.d), x.p); render(); break; }
     case 'unlink': change(() => unlink(d, sel.port)); break;
     case 'link': {
       const o = devOf($('#ln-dev').value), op = $('#ln-port').value; if (!o || !op) { toast('Choose a device and port.'); break; }
@@ -2054,7 +2367,7 @@ function onPanelClick(e) {
 
 function init() {
   const saved = lsGet(STORE);
-  try { if (saved) { const s = JSON.parse(saved); P = loadProject(s.P); sel = s.sel || sel; colourBy = s.colourBy || 'status'; leads = s.leads !== false; } } catch (e) { P = null; }
+  try { if (saved) { const s = JSON.parse(saved); P = loadProject(s.P); sel = s.sel || sel; colourBy = s.colourBy || 'status'; leads = s.leads !== false; face = s.face === 'rear' ? 'rear' : 'front'; } } catch (e) { P = null; }
   if (!P) example();
   fixSel();
   renderLib(); render(); fitZoom(); renderRack(); save();
@@ -2071,16 +2384,17 @@ function init() {
   st.addEventListener('dragover', e => {
     if (!$('#rsvg')) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
     const r = curRack(), pt = svgPt(e), u = clamp(uAtY(r, pt.y), 1, r.u);
-    $('#ghost').innerHTML = `<rect x="${NUMW + RAIL}" y="${PADT + (r.u - u) * UH}" width="${FW}" height="${UH}" fill="#2fb3aa" opacity=".3" stroke="#2fb3aa" stroke-width="2"/>`;
+    $('#ghost').innerHTML = `<rect x="${RX()}" y="${PADT + (r.u - u) * UH}" width="${FW}" height="${UH}" fill="#2fb3aa" opacity=".3" stroke="#2fb3aa" stroke-width="2"/>`;
   });
   st.addEventListener('dragleave', () => { const gh = $('#ghost'); if (gh) gh.innerHTML = ''; });
   st.addEventListener('drop', e => {
     const v = e.dataTransfer.getData('text/plain'); if (!v.startsWith('kit:')) return; e.preventDefault();
     const r = curRack(), pt = svgPt(e), u = clamp(uAtY(r, pt.y), 1, r.u), c = CAT_BY[v.slice(4)];
+    if (c.vert) { addKit(c.id, null, face === 'rear' ? (pt.x < rackW() / 2 ? 'left' : 'right') : null); return; }
     const sh = shelfAt(r, u);
-    if (sh && (c.cat === 'onshelf' || !placeOK(r, u - c.h + 1, c.h))) { addToShelf(c.id, sh); return; }   // onto a shelf
-    if (c.cat === 'onshelf') { addKit(c.id); return; }
-    const side = c.half ? (pt.x < NUMW + RAIL + FW / 2 ? 'left' : 'right') : null;
+    if (sh && accepts(sh, c.id) && (c.cat === 'onshelf' || c.acm || !placeOK(r, u - c.h + 1, c.h))) { addToShelf(c.id, sh, isDrawer(sh) ? clamp(Math.floor((pt.x - devBox(r, sh).x - DLW()) / ((devBox(r, sh).w - DLW() - 10) / CAT_BY[sh.type].slots)) + 1, 1, CAT_BY[sh.type].slots) : null); return; }   // onto a shelf or into a drawer
+    if (c.cat === 'onshelf' || c.acm) { addKit(c.id); return; }
+    const side = c.half ? sideAt(pt.x) : null;
     // drop puts the kit's top at the U under the pointer; if that doesn't fit, try with its bottom there
     const ok = uu => (c.half ? [side, side === 'left' ? 'right' : 'left'] : ['full']).some(sd => placeOK(r, uu - c.h + 1, c.h, null, sd));
     if (ok(u)) addKit(c.id, u, c.half && placeOK(r, u - c.h + 1, c.h, null, side) ? side : null); else if (ok(u + c.h - 1)) addKit(c.id, u + c.h - 1); else { toast('Not enough room there.'); renderRack(); }
@@ -2101,7 +2415,8 @@ function init() {
   });
   $('#tools').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.cb) { colourBy = b.dataset.cb; save(); render({ panel: true }); }
+    if (b.dataset.face) { face = b.dataset.face; hideTip(); save(); render(); fitZoom(); renderRack(); }
+    else if (b.dataset.cb) { colourBy = b.dataset.cb; save(); render({ panel: true }); }
     else if (b.dataset.z) { const z = b.dataset.z; if (z === 'fit') fitZoom('width'); else if (z === 'all') fitZoom('all'); else zoom = clamp(zoom * (z === '+' ? 1.2 : 1 / 1.2), .25, 3); renderRack(); }
     else if (b.dataset.act === 'cancelpick') { pick = null; render(); }
     else if (b.dataset.act === 'kit') setPane('kit');
@@ -2120,7 +2435,7 @@ function init() {
     if (t.id === 'trk') { tRack = t.value; renderTable(); return; }
     if (t.dataset.tp) { const [did, pid] = t.dataset.tp.split('|'), d = devOf(did); snap(); setPort(d, pid, t.dataset.k, t.value.trim()); reindex(); save(); $('#b-undo').disabled = false; renderPanel(); }
   });
-  tb.addEventListener('click', e => { const b = e.target.closest('[data-goport]'); if (b) { const [did, pid] = b.dataset.goport.split('|'); sel = { rack: rackOf(did).id, dev: did, port: pid }; view = 'rack'; pane = 'rack'; render(); openDetails(); } });
+  tb.addEventListener('click', e => { const b = e.target.closest('[data-goport]'); if (b) { const [did, pid] = b.dataset.goport.split('|'); sel = { rack: rackOf(did).id, dev: did, port: pid }; view = 'rack'; pane = 'rack'; showFace(devOf(did), pid); render(); openDetails(); } });
 
   $('#b-undo').onclick = undo; $('#b-redo').onclick = redo;
   $('#b-new').onclick = () => {
@@ -2145,7 +2460,7 @@ function init() {
   menu.addEventListener('click', e => {
     const b = e.target.closest('[data-x]'); if (!b) return; menu.hidden = true;
     const free = $('#x-free').checked;
-    ({ xlsx: () => exportXLSX(free), csv: () => exportCSV(free), pdf: () => exportPDF(free), png: () => exportPNG(false), svg: exportSVG, pdfrack: exportRackPDF, pngall: () => exportPNG(true) })[b.dataset.x]();
+    ({ xlsx: () => exportXLSX(free), csv: () => exportCSV(free), pdf: () => exportPDF(free), png: () => exportPNG(false), pngboth: () => exportPNG(false, true), svg: exportSVG, pdfrack: exportRackPDF, pngall: () => exportPNG(true) })[b.dataset.x]();
   });
   $('#b-theme').onclick = () => {
     const root = document.documentElement, dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;

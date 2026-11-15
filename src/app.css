@@ -279,3 +279,14 @@ table.pt td.mut { color: var(--ink3); }
 .pcard input { width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); padding: 0 8px; font-size: 16px; }
 .pcard .full { grid-column: 1 / -1; }
 .pcard .go { border: 0; background: none; color: var(--brand); font-weight: 600; cursor: pointer; font-family: PlexMono, ui-monospace, Consolas, monospace; }
+
+/* IP-ACM drawer slots */
+.acms { display: grid; gap: 6px; margin-bottom: 10px; }
+.acmrow { display: grid; grid-template-columns: 22px minmax(0, .8fr) minmax(0, 1.2fr) auto; gap: 6px; align-items: center; }
+.acmrow.empty { grid-template-columns: 22px 1fr auto; }
+.acmrow .u { color: var(--ink3); font-size: 12px; text-align: center; }
+.acmrow input { min-width: 0; width: 100%; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink); }
+.acmrow .note { margin: 0; }
+svg.rack .slotadd { cursor: pointer; }
+svg.rack .slotadd:hover rect { stroke: #2fb3aa; }
+svg.rack .vslot { pointer-events: all; }
