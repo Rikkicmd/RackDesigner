@@ -124,6 +124,10 @@ Open, the boards themselves show, with their Ethernet ports and link lights:
 
 ![Asset code and its QR code in a device's details](docs/screenshots/asset-qr.png)
 
+The label sheet made from the example project:
+
+![The A4 asset label sheet with a QR code, asset code, label, model and position on each label](docs/screenshots/asset-labels.png)
+
 ### NVR drives
 
 - Recorders (Avigilon NVR5 models, the 2U NVR server, NVR / recorder and the desktop NVR) have a **Drives** section: choose the drive size in each bay (1 TB to 24 TB, or empty), or fill every bay at once.
@@ -158,9 +162,15 @@ For each port you can record:
 
 **‹ Prev** and **Next ›** (or the left and right arrow keys) step through the device's ports so you can fill in a whole panel quickly.
 
+Patching from a free port: press **Click the other port on the rack** and the ports it can be patched to are outlined, while everything it can't go to (here the power outlets and inlets) fades out. **Cancel** or Esc stops picking.
+
+![Picking the far end for SW-02 port 13: valid ports are outlined and power ports are faded](docs/screenshots/pick-mode.png)
+
 You can also **Add ports** to any device (choosing type, count, prefix and first number) to match the real hardware.
 
 Patch leads are drawn on the rack between the two ports. On the front, leads are dressed through the nearest cable manager or brush plate between the two ends: they drop into it, run along behind the rings or bristles, and come out to the other port, so the managers look in use. Leads with no manager near them hang in a curve. When other kit sits between the two ends, the lead doesn't cross its front: each end drops into the manager or brush plate next to it, goes out of sight before the manager's label, and runs up or down the side of the rack to the other end. That hidden run is shown as a faint dashed line on the rail, so you can still follow it. Turn the leads off with the **Patch leads** tick box when you only want to see the faces.
+
+![Patch leads from the switches dressed through the cable managers between the patch panels](docs/screenshots/cable-managers.png)
 
 ![Patch leads run through a brush plate to the IP-ACMs](docs/screenshots/brush-plate.png)
 
@@ -291,9 +301,9 @@ Every Allied Telesis and Zenitel model in the library:
 
 ### Changing a model
 
-Click a switch, ICX, recorder or UPS and pick another model from the **Model** box in its details. The faceplate redraws and the allocations move across to the ports with the same name and type. If any would be lost (for example going from a 52 port switch to a 28 port one) you're asked first. The details also hold the label, position, width, IP address, serial number, notes, power inlets and a grid of every port, coloured by status.
+Click a switch, ICX, recorder or UPS and pick another model from the **Model** box in its details. The faceplate redraws and the allocations move across to the ports with the same name and type. If any would be lost (for example going from a 52 port switch to a 28 port one) you're asked first. The details also hold the label, asset code and its QR code, position, width, IP address, serial number, notes, power inlets and a grid of every port, coloured by status.
 
-![SW-01 selected: its Model box, power inlet and port grid](docs/screenshots/device-details.png)
+![SW-01 selected: its Model box, asset code with QR code, power inlet and port grid](docs/screenshots/device-details.png)
 
 ### All the kit
 
