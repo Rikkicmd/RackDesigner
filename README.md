@@ -39,7 +39,7 @@ That's it. Your work is kept in the browser as you go, and **Save file** writes 
 
 - **Add kit** from the library on the left: drag an item onto a U position, or click it to drop it into the lowest free space that fits.
 - **Move** kit by dragging it, with the **▲ Up / ▼ Down** buttons, or with the arrow keys. The app stops you overlapping kit and flags anything that does not fit.
-- **Half-width kit** such as Zenitel ICX units sits side by side in the same U (left half and right half).
+- **Half-width kit** such as Zenitel ICX units sits side by side in the same U (left half and right half). Drag one sideways to swap sides.
 - **Shelves** (1U, 2U and 3U) carry desktop kit such as NVRs, small switches, routers, mini PCs, power supplies and media converters. Kit on a shelf slides left and right along it, and the shelf shows how much of its width is used.
 - **Several racks** per project: add one with **+ Rack**, switch between them with the tabs, and duplicate or delete a rack from its details. Each rack has a name, location, height (U), width and depth.
 - Every device gets an automatic label (`PP-01`, `SW-02`, `NVR-01`…) that you can change, plus model, IP address, serial number, colour and notes.
@@ -155,11 +155,27 @@ The half-moon button switches between light and dark. It follows your system set
 
 ## Kit library
 
+### Real-looking faceplates
+
+Allied Telesis switches and Zenitel ICX units are drawn like their real front panels, so the rack picture looks like the cabinet on site:
+
+- **x530**: 1G copper ports, then the multi-gig ports (100M/1/2.5/5G, marked with a blue line), SFP+ cages two high, and the management panel with the console port, management port, USB, eco-friendly button and switch ID LED. Ports are numbered odd on top, even underneath.
+- **x230**: 1G copper and SFP ports with the console on the front. The 10 and 18 port models have a narrower body, drawn in a rack-mount kit at their real width.
+- **Zenitel ICX**: the 162 mm unit on its rack shelf, with the power, status, fault, active and link LEDs on the front. Its Ethernet and console ports are on the back, and are shown in an "on the back" box so they can still be patched.
+- Patched ports show a green link light. The Allied Telesis wordmark and model are written on each switch.
+- Change a switch or ICX to another model from its **Model** box. Allocations move across to the ports with the same name and type, and you're asked first if any would be lost.
+
+Port counts and positions come from Allied Telesis's x530 installation guide and x230 datasheet and Zenitel's ICX-500 installation manual. The x530-10GHXm, x530-18GHXm and x530L layouts weren't in those documents, so check them against the real kit.
+
+![Allied Telesis and Zenitel faceplates](docs/screenshots/faceplates.png)
+
 | Group | Kit |
 | --- | --- |
 | **Patch panels** | Cat6 24 port (1U), Cat6 48 port (2U), Cat6A 24 port, fibre 12 × LC duplex, fibre 24 × LC duplex, fibre 12 × SC |
-| **Switches and network** | Allied Telesis x530-28GPXm, x530-52GPXm, x530-18GHXm, x530-10GHXm, x230-28GP, x230-18GP, x230-10GP; generic 24 + 4 SFP and 48 + 4 SFP switches; router / firewall; media converter chassis |
-| **Servers and recorders** | C•CURE 9000 server, Avigilon NVR server, NVR / recorder, 1U and 2U servers (with iDRAC), Zenitel ICX unit (half width), KVM terminal |
+| **Allied Telesis switches** | x530-28GPXm, x530-28GTXm, x530-52GPXm, x530-52GTXm, x530-18GHXm, x530-10GHXm, x530L-28GPX, x530L-52GPX, x230-28GP, x230-28GT, x230-18GP, x230-18GT, x230-10GP, x230-10GT, x230L-17GT, x230L-26GT |
+| **Other switches and network** | Generic 24 + 4 SFP and 48 + 4 SFP switches; router / firewall; media converter chassis |
+| **Zenitel** | ICX-500, ICX-510, ICX-510-IA (half width, two side by side on an IA-RS1 shelf) |
+| **Servers and recorders** | C•CURE 9000 server, Avigilon NVR server, NVR / recorder, 1U and 2U servers (with iDRAC), KVM terminal |
 | **Power** | UPS 2U and 3U (each with a network card port and 8 outlets), PDU 8 way |
 | **Accessories and shelves** | Cable manager, brush plate, blanking plate, shelves (1U, 2U, 3U), fan tray |
 | **Shelf kit** (sits on a shelf) | Desktop NVR with 8 PoE, desktop 8 port switch, router / modem, mini PC / workstation, power supply, media converter, small device |
