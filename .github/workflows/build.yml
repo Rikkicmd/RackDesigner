@@ -1,0 +1,28 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the rack designer
+        run: python -I build.py
+      - name: Check dist/ matches the source
+        run: |
+          if ! git diff --quiet -- dist/; then
+            echo "::error::dist/system-draw-rack-designer.html is out of date. Run 'python3 -I build.py' and commit the result."
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: system-draw-rack-designer
+          path: dist/system-draw-rack-designer.html
