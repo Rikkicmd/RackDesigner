@@ -160,9 +160,11 @@ For each port you can record:
 
 You can also **Add ports** to any device (choosing type, count, prefix and first number) to match the real hardware.
 
-Patch leads are drawn on the rack between the two ports. On the front, leads are dressed through the nearest cable manager or brush plate between the two ends: they drop into it, run along behind the rings or bristles, and come out to the other port, so the managers look in use. Leads with no manager near them hang in a curve. Turn the leads off with the **Patch leads** tick box when you only want to see the faces.
+Patch leads are drawn on the rack between the two ports. On the front, leads are dressed through the nearest cable manager or brush plate between the two ends: they drop into it, run along behind the rings or bristles, and come out to the other port, so the managers look in use. Leads with no manager near them hang in a curve. When other kit sits between the two ends, the lead doesn't cross its front: each end drops into the manager or brush plate next to it, goes out of sight before the manager's label, and runs up or down the side of the rack to the other end. That hidden run is shown as a faint dashed line on the rail, so you can still follow it. Turn the leads off with the **Patch leads** tick box when you only want to see the faces.
 
 ![Patch leads run through a brush plate to the IP-ACMs](docs/screenshots/brush-plate.png)
+
+![Leads with kit in between run up the side of the rack out of sight](docs/screenshots/side-routing.png)
 
 ### Hover pop-ups
 
@@ -331,7 +333,7 @@ The app is written as plain HTML, CSS and JavaScript in `src/`, with no framewor
 
 ```sh
 python3 -I build.py
-# built dist/system-draw-rack-designer.html 643170 bytes
+# built dist/system-draw-rack-designer.html 646065 bytes
 ```
 
 Python 3.8 or newer is all you need. GitHub Actions runs the build on every push to `main`, checks that the committed `dist/` file matches the source, and uploads the built page as a downloadable artifact.

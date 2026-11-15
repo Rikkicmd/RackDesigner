@@ -668,6 +668,34 @@ function leadPath(a, b, ch) {
   const sag = 18 + Math.min(60, Math.abs(a.x - b.x) * .08);
   return `M${a.x.toFixed(1)},${a.y.toFixed(1)} C${a.x.toFixed(1)},${(a.y + sag).toFixed(1)} ${b.x.toFixed(1)},${(b.y + sag).toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;
 }
+const spanOf = d => { const h = shelfOf(d) || d; return [h.u, h.u + h.h - 1]; };   // the U a device (or the shelf it's on) takes
+const isChan = d => ['cm', 'brush'].includes(CAT_BY[d.type]?.art);
+function blockersBetween(r, lo, hi, skip) { // kit in the U strictly between lo and hi, not counting managers
+  return r.devices.some(x => inRack(x) && !isV(x) && !isChan(x) && !skip.includes(x) && x.u <= hi && x.u + x.h - 1 >= lo);
+}
+function nearChannel(r, chans, dev, toward) { // the manager next to this end, with nothing in between, toward the other end if possible
+  const [lo, hi] = spanOf(dev), out = [];
+  for (const c of chans) {
+    const [cl, ch] = [c.d.u, c.d.u + c.d.h - 1], skip = [dev, shelfOf(dev)].filter(Boolean);
+    const clear = cl > hi ? !blockersBetween(r, hi + 1, cl - 1, skip) : ch < lo ? !blockersBetween(r, ch + 1, lo - 1, skip) : false;
+    if (clear) out.push({ c, dist: cl > hi ? cl - hi : lo - ch, toward: (cl > hi) === (toward > hi) });
+  }
+  out.sort((p, q) => (q.toward - p.toward) || p.dist - q.dist);
+  return out[0]?.c || null;
+}
+function routeLead(r, chans, d, a, o, b) { // { vis, hid }: the visible lead, and the part run up the side out of sight
+  const f = v => v.toFixed(1), [al, ah] = spanOf(d), [bl, bh] = spanOf(o);
+  const between = (al > bh || bl > ah) && blockersBetween(r, Math.min(ah, bh) + 1, Math.max(al, bl) - 1, [d, o, shelfOf(d), shelfOf(o)].filter(Boolean));
+  if (!between) { const ch = pickChannel(chans, a, b); return { vis: leadPath(a, b, ch), ch: ch ? [ch] : [] }; }
+  const ca = nearChannel(r, chans, d, (bl + bh) / 2), cb = nearChannel(r, chans, o, (al + ah) / 2);
+  const left = (a.x + b.x) / 2 < RX() + FW / 2, ex = left ? RX() + 3 : RX() + FW - 3, rail = left ? RX() - RAIL / 2 : RX() + FW + RAIL / 2;
+  const leg = (p, c, dv) => { // from the port into its manager and out of sight before the manager's label (or straight out sideways)
+    const cy = c ? c.y + ((c.n++ % 9) - 4) * 2.3 : p.y, cbx = c && devBox(r, c.d), db = !c && devBox(r, dv), e = cbx ? (left ? Math.min(p.x, cbx.x + LBLW + 4) : Math.max(p.x, cbx.x + FW - 34)) : db ? (left ? Math.min(p.x, db.x + 4) : Math.max(p.x, db.x + db.w - 4)) : ex, s = Math.sign(e - p.x) || 1;
+    return { cy, e, d: c ? `M${f(p.x)},${f(p.y)} C${f(p.x)},${f(cy)} ${f(p.x)},${f(cy)} ${f(p.x + s * Math.min(14, Math.abs(e - p.x)))},${f(cy)} L${f(e)},${f(cy)}` : `M${f(p.x)},${f(p.y)} L${f(e)},${f(cy)}` };
+  };
+  const A = leg(a, ca, d), B = leg(b, cb, o);
+  return { vis: A.d + ' ' + B.d, hid: `M${f(A.e)},${f(A.cy)} L${f(rail)},${f(A.cy)} L${f(rail)},${f(B.cy)} L${f(B.e)},${f(B.cy)}`, ch: [ca, cb].filter(Boolean) };
+}
 function leadCol(x, kind) { if (x.colour) return CABLE_COL[x.colour] || '#2f74d0'; return kind === 'lc' || kind === 'sc' ? '#2ec4d6' : isPow(kind) ? '#16191c' : '#2f74d0'; }
 function channelFront(r, c) { // the front of a manager drawn over the leads in it, so they run behind the rings and bristles
   const b = devBox(r, c.d), H = b.h, art = CAT_BY[c.d.type].art; let s = '';
@@ -676,18 +704,19 @@ function channelFront(r, c) { // the front of a manager drawn over the leads in 
   return s;
 }
 function leadsSVG(r) {
-  let s = ''; const done = new Set(), chans = leadChannels(r);
+  let s = '', hid = ''; const done = new Set(), chans = leadChannels(r);
   for (const d of r.devices) for (const pid in d.ports) {
     const x = d.ports[pid]; if (!x.link) continue;
     const key = [d.id + pid, x.link.d + x.link.p].sort().join('~'); if (done.has(key)) continue; done.add(key);
     const o = devOf(x.link.d); if (!o || rackOf(o.id) !== r) continue;
     const a = portCentre(r, d, pid), b = portCentre(r, o, x.link.p); if (!a || !b) continue;
-    const col = leadCol(x, a.kind), ch = isPow(a.kind) ? null : pickChannel(chans, a, b), path = leadPath(a, b, ch);
-    if (ch) ch.used = true;
+    const col = leadCol(x, a.kind), rt = isPow(a.kind) ? { vis: leadPath(a, b), ch: [] } : routeLead(r, chans, d, a, o, b), path = rt.vis;
+    rt.ch.forEach(c => { c.used = true; });
+    if (rt.hid) hid += `<path d="${rt.hid}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="3 4" opacity=".28"/>`;
     s += `<path d="${path}" fill="none" stroke="${isPow(a.kind) && !x.colour ? '#c9d0d5' : '#000'}" stroke-opacity="${isPow(a.kind) && !x.colour ? '.55' : '.35'}" stroke-width="4.2" stroke-linecap="round"/><path d="${path}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" opacity=".92"/>`;
   }
   for (const c of chans) if (c.used) s += channelFront(r, c);
-  return `<g class="leads" pointer-events="none">${s}</g>`;
+  return `<g class="leads" pointer-events="none">${hid}${s}</g>`;
 }
 
 function rackSVG(r, o = {}) {
@@ -1120,7 +1149,8 @@ function hoverPort(d, pid) {
   const r = curRack(), o = devOf(x.link.d);
   if (hov && o && rackOf(o.id) === r && !leads) {
     const a = portCentre(r, d, pid), b = portCentre(r, o, x.link.p);
-    if (a && b) hov.innerHTML = `<path d="${leadPath(a, b, pickChannel(leadChannels(r), a, b))}"
+    if (a && b) hov.innerHTML = `<path d="${(rt => rt.vis + (rt.hid ? ' ' + rt.hid : ''))(isPow(a.kind) ? { vis: leadPath(a, b) } : routeLead(r, leadChannels(r), d, a, o, b))}"
+
  fill="none" stroke="#ffd54a" stroke-width="3" stroke-linecap="round"/>`;
   }
 }
