@@ -4,10 +4,23 @@ Design comms and server racks visually, allocate every switch, patch panel and d
 
 Rack Designer is **one HTML file** that runs in any modern browser. There is nothing to install, no server and no account, and it works fully offline: the page's security policy blocks all network access, so nothing you draw ever leaves your computer.
 
-![Rack Designer showing the example rack, with patch leads drawn between patch panels and switches](docs/screenshots/rack-view.png)
+![Rack Designer showing the example rack, with patch leads drawn between patch panels, switches and IP-ACMs](docs/screenshots/rack-view.png)
+
+## At a glance
+
+- **Draw racks to scale**: drag kit into place by the U, with half-width units, shelves of desktop kit, and several racks per project.
+- **Real-looking kit**: Allied Telesis x530 and x230 switches, Zenitel ICX units, Avigilon NVR5 recorders and rack UPSs are drawn like their real front panels, with green link lights on patched ports.
+- **Front and back**: turn the rack round to see the ports, power inlets and 0U PDUs on the back.
+- **Every port allocated**: patch leads, outside connections, VLANs, cable IDs and colours, speed, PoE, reserved and faulty ports.
+- **Power**: choose the UPS or PDU outlet that feeds each power supply, and get a power schedule.
+- **C•CURE IP-ACM drawer**: a 2U pull-out drawer with six labelled IP-ACM door modules, shown open or shut.
+- **Hover pop-ups** that trace a cable from the switch, through the patch panel, to the field device.
+- **Exports**: Excel, CSV and PDF port and power schedules, plus PNG, SVG and PDF pictures of the rack, front and back.
+- **Works anywhere**: desktop, laptop or phone, light or dark, fully offline.
 
 ## Contents
 
+- [At a glance](#at-a-glance)
 - [Getting started](#getting-started)
 - [Features](#features)
   - [Drawing a rack](#drawing-a-rack)
@@ -23,6 +36,8 @@ Rack Designer is **one HTML file** that runs in any modern browser. There is not
   - [Laptops, tablets and phones](#laptops-tablets-and-phones)
   - [Light and dark](#light-and-dark)
 - [Kit library](#kit-library)
+  - [Real-looking faceplates](#real-looking-faceplates)
+  - [Changing a model](#changing-a-model)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Building from source](#building-from-source)
 - [Repository layout](#repository-layout)
@@ -32,7 +47,7 @@ Rack Designer is **one HTML file** that runs in any modern browser. There is not
 
 1. Download [`dist/system-draw-rack-designer.html`](dist/system-draw-rack-designer.html) (on GitHub, open the file and press **Download raw file**).
 2. Double-click it to open it in Chrome, Edge, Firefox or Safari.
-3. The first time it opens you get an example project, a 24U comms rack with patch panels, switches, servers, a shelf of desktop kit and a UPS, so you can see how everything fits together. Press **New** and type `1` for an empty 42U rack, or `2` to get the example back.
+3. The first time it opens you get an example project: a 24U comms rack with patch panels, Allied Telesis x530 and x230 switches, a C•CURE server, an Avigilon NVR5, two Zenitel ICX units, an IP-ACM drawer, a shelf of desktop kit, a UPS, a PDU and two 0U PDUs at the back, all patched and powered, so you can see how everything fits together. Press **New** and type `1` for an empty 42U rack, or `2` to get the example back.
 
 That's it. Your work is kept in the browser as you go, and **Save file** writes it to a `.rack.json` file you can keep, email or open on another machine.
 
@@ -56,6 +71,10 @@ The **Front / Back** switch above the rack turns it round. The back view is draw
 - Ports that are on the back of the real kit are only on the back view: server and NVR network and iDRAC ports, the Zenitel ICX Ethernet and console ports, UPS outlets and network card, KVM ports, and every power inlet.
 - Patch leads are drawn on the view that shows both ends. Picking a port from the port table, a patch link or the panel turns the rack round if it's on the other side.
 - Designs saved before the back view existed are moved across when they're opened: catalogue kit gets its back ports put on the back.
+
+![The back of the example rack with UPS-01 selected: power leads from its outlets to each PSU, and its Outlets list on the right](docs/screenshots/back-view-app.png)
+
+The back view on its own, as it appears in the picture exports, with the two 0U PDUs hanging at the sides:
 
 ![The back of the example rack: power inlets, UPS outlets, server NICs and two 0U PDUs at the sides](docs/screenshots/rear-view.png)
 
@@ -81,7 +100,13 @@ The **IP-ACM pull-out drawer** is 2U and holds six Software House IP-ACM v2 door
 
 I couldn't find a Software House part number for a six-board 2U drawer, so it's drawn as a plain drawer with label windows.
 
-![An IP-ACM drawer with four labelled boards and two empty slots](docs/screenshots/acm-drawer.png)
+Shut, the drawer front shows a label window for each slot:
+
+![An IP-ACM drawer, shut, with four labelled boards and two empty slots](docs/screenshots/acm-drawer.png)
+
+Open, the boards themselves show, with their Ethernet ports and link lights:
+
+![The same drawer shown open: four IP-ACM boards with ETH1 patched](docs/screenshots/acm-drawer-open.png)
 
 ### Allocating ports
 
@@ -162,11 +187,20 @@ Tick **Include free ports in tables** to list unused ports as well.
 | **All racks side by side (PNG)** | Every rack in the project in one picture. |
 | **This rack, front and back (PDF)** | Just the rack drawings on an A3 page. |
 
-Examples of every export made from the built-in example project are in [`examples/`](examples/).
+Exports made from the built-in example project are in [`examples/`](examples/):
 
-<p align="center"><img src="docs/screenshots/export-rack.png" alt="The exported PNG of RACK-01" width="420"></p>
+- [`example-port-allocation.xlsx`](examples/example-port-allocation.xlsx): the Excel workbook, with its Port allocation, Cable schedule, Rack layout and Power sheets
+- [`example-port-allocation.csv`](examples/example-port-allocation.csv): the CSV port table
+- [`example-rack-design.pdf`](examples/example-rack-design.pdf): the full PDF report
+- [`example-rack-01.png`](examples/example-rack-01.png) and [`example-rack-01-front-and-back.png`](examples/example-rack-01-front-and-back.png): rack pictures
 
-![The first two pages of the PDF export: rack layout with device list, and the port allocation table](docs/screenshots/pdf-export.png)
+**This rack, front and back (PNG)** from the example project:
+
+![The exported front and back picture of RACK-01](docs/screenshots/export-rack.png)
+
+Three pages of the PDF report: the rack front and back with its device list, the port allocation table, and the power schedule:
+
+![Pages 1, 2 and 5 of the PDF export: rack layout, port allocation and power schedule](docs/screenshots/pdf-export.png)
 
 ### Saving your work
 
@@ -207,9 +241,23 @@ Allied Telesis switches and Zenitel ICX units are drawn like their real front pa
 
 Port counts and positions come from Allied Telesis's x530 installation guide and x230 datasheet, Zenitel's ICX-500 installation manual and Avigilon's NVR5 datasheet. The x530-10GHXm, x530-18GHXm and x530L layouts weren't in those documents, so check them against the real kit.
 
+Close up, from the example rack: an x530-28GPXm and an x230-28GP with green link lights on the patched ports, two ICX-500s side by side, an NVR5 Premium, a Smart-UPS style UPS and the IP-ACM drawer open.
+
+![Close-ups of the switch, ICX, NVR, UPS and IP-ACM drawer faceplates](docs/screenshots/kit-closeups.png)
+
+Every Allied Telesis and Zenitel model in the library:
+
 ![Allied Telesis and Zenitel faceplates](docs/screenshots/faceplates.png)
 
 ![Avigilon NVR5 recorders and rack UPS fronts](docs/screenshots/avigilon-ups.png)
+
+### Changing a model
+
+Click a switch, ICX, recorder or UPS and pick another model from the **Model** box in its details. The faceplate redraws and the allocations move across to the ports with the same name and type. If any would be lost (for example going from a 52 port switch to a 28 port one) you're asked first. The details also hold the label, position, width, IP address, serial number, notes, power inlets and a grid of every port, coloured by status.
+
+![SW-01 selected: its Model box, power inlet and port grid](docs/screenshots/device-details.png)
+
+### All the kit
 
 | Group | Kit |
 | --- | --- |
