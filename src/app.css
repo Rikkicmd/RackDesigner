@@ -290,3 +290,17 @@ table.pt td.mut { color: var(--ink3); }
 svg.rack .slotadd { cursor: pointer; }
 svg.rack .slotadd:hover rect { stroke: #2fb3aa; }
 svg.rack .vslot { pointer-events: all; }
+
+/* asset code QR and recorder drives */
+.qrcard { display: flex; gap: 12px; align-items: center; padding: 10px; margin: 2px 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.qrcard .qr { flex: none; background: #fff; border-radius: 6px; line-height: 0; padding: 2px; }
+.qrcard .qr svg { width: 108px; height: 108px; display: block; }
+.qrcard > div:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.qrcard small { color: var(--ink3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.qrcard b { font-size: 15px; overflow-wrap: anywhere; }
+.qrcard span { color: var(--ink2); font-size: 12.5px; }
+.qrcard .btn { align-self: flex-start; margin-top: 4px; }
+.bays { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; margin-bottom: 12px; }
+.bays label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink3); }
+.bays label span { width: 16px; text-align: right; flex: none; }
+.bays select { min-width: 0; flex: 1; font: inherit; font-size: 12.5px; padding: 4px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }

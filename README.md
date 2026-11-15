@@ -14,6 +14,8 @@ Rack Designer is **one HTML file** that runs in any modern browser. There is not
 - **Every port allocated**: patch leads, outside connections, VLANs, cable IDs and colours, speed, PoE, reserved and faulty ports.
 - **Power**: choose the UPS or PDU outlet that feeds each power supply, and get a power schedule.
 - **C•CURE IP-ACM drawer**: a 2U pull-out drawer with six labelled IP-ACM door modules, shown open or shut.
+- **Asset codes with QR codes**: type in each device's asset code and its QR code shows when the device is selected; print a sheet of asset labels.
+- **Recorder drives**: choose the hard drive size in every NVR bay and see the total storage.
 - **Hover pop-ups** that trace a cable from the switch, through the patch panel, to the field device.
 - **Exports**: Excel, CSV and PDF port and power schedules, plus PNG, SVG and PDF pictures of the rack, front and back.
 - **Works anywhere**: desktop, laptop or phone, light or dark, fully offline.
@@ -27,6 +29,8 @@ Rack Designer is **one HTML file** that runs in any modern browser. There is not
   - [Front and back](#front-and-back)
   - [Power: UPS, PDUs and 0U PDUs](#power-ups-pdus-and-0u-pdus)
   - [C•CURE IP-ACM drawer](#ccure-ip-acm-drawer)
+  - [Asset codes and QR codes](#asset-codes-and-qr-codes)
+  - [NVR drives](#nvr-drives)
   - [Allocating ports](#allocating-ports)
   - [Hover pop-ups](#hover-pop-ups)
   - [Colouring ports](#colouring-ports)
@@ -108,6 +112,29 @@ Open, the boards themselves show, with their Ethernet ports and link lights:
 
 ![The same drawer shown open: four IP-ACM boards with ETH1 patched](docs/screenshots/acm-drawer-open.png)
 
+### Asset codes and QR codes
+
+- Every device has an **Asset code** box in its details. Type in your own code; nothing is made up for you.
+- When a device with an asset code is selected, its **QR code** shows under the box with the code, label and model. **Save QR as PNG** saves it as a picture for a label printer.
+- If two devices have the same code (capitals ignored), both say so.
+- Duplicating a device or a rack leaves the asset code blank on the copy.
+- **Export › Asset labels with QR codes** makes an A4 PDF of labels, 21 to a sheet (63.5 × 38.1 mm), each with the QR code, asset code, device label, model and where it is.
+- The asset code shows in the hover pop-up, the *Rack layout* sheet and the PDF device lists.
+- The QR codes are made inside the app, so this works offline too.
+
+![Asset code and its QR code in a device's details](docs/screenshots/asset-qr.png)
+
+### NVR drives
+
+- Recorders (Avigilon NVR5 models, the 2U NVR server, NVR / recorder and the desktop NVR) have a **Drives** section: choose the drive size in each bay (1 TB to 24 TB, or empty), or fill every bay at once.
+- The number of bays starts at the model's (e.g. 12 on an NVR5 Premium 96-160 TB) and can be changed.
+- The total raw storage shows in the section heading, the hover pop-up and the exports, e.g. *1 × 16TB + 11 × 8TB = 104 TB raw*.
+- The drive sizes are drawn on the bays on the front of the recorder. Empty bays are drawn dark.
+
+![Choosing drive sizes for an NVR](docs/screenshots/nvr-drives.png)
+
+![Drive sizes on the front of an Avigilon NVR5](docs/screenshots/nvr-drives-front.png)
+
 ### Allocating ports
 
 Click any port to open its details on the right.
@@ -171,11 +198,17 @@ Everything is under the **Export** button.
 
 | Export | What you get |
 | --- | --- |
-| **Excel workbook (.xlsx)** | Four sheets: *Port allocation* (every port, all 16 columns), *Cable schedule* (one row per patch lead: cable ID, both ends, type, colour, VLAN), *Rack layout* (every device with U, height, label, label text, kit, model, IP, serial and ports used) and *Power* (every power inlet and the outlet feeding it). |
+| **Excel workbook (.xlsx)** | Four sheets: *Port allocation* (every port, all 16 columns), *Cable schedule* (one row per patch lead: cable ID, both ends, type, colour, VLAN), *Rack layout* (every device with U, height, label, asset code, label text, kit, model, drives, IP, serial and ports used) and *Power* (every power inlet and the outlet feeding it). |
 | **CSV (.csv)** | The port allocation table, ready for any spreadsheet or import. |
 | **PDF: rack layouts and port tables** | A landscape A3 report: each rack drawn front and back next to its device list, then the full port allocation table, the power schedule and the cable schedule. |
 
 Tick **Include free ports in tables** to list unused ports as well.
+
+**Asset labels**
+
+| Export | What you get |
+| --- | --- |
+| **Asset labels with QR codes (PDF, A4)** | A sheet of 63.5 × 38.1 mm labels, one per device with an asset code: QR code, asset code, label, model and rack position. |
 
 **Rack layout picture**
 
@@ -192,6 +225,7 @@ Exports made from the built-in example project are in [`examples/`](examples/):
 - [`example-port-allocation.xlsx`](examples/example-port-allocation.xlsx): the Excel workbook, with its Port allocation, Cable schedule, Rack layout and Power sheets
 - [`example-port-allocation.csv`](examples/example-port-allocation.csv): the CSV port table
 - [`example-rack-design.pdf`](examples/example-rack-design.pdf): the full PDF report
+- [`example-asset-labels.pdf`](examples/example-asset-labels.pdf): the asset label sheet
 - [`example-rack-01.png`](examples/example-rack-01.png) and [`example-rack-01-front-and-back.png`](examples/example-rack-01-front-and-back.png): rack pictures
 
 **This rack, front and back (PNG)** from the example project:
@@ -295,7 +329,7 @@ The app is written as plain HTML, CSS and JavaScript in `src/`, with no framewor
 
 ```sh
 python3 -I build.py
-# built dist/system-draw-rack-designer.html 626054 bytes
+# built dist/system-draw-rack-designer.html 640807 bytes
 ```
 
 Python 3.8 or newer is all you need. GitHub Actions runs the build on every push to `main`, checks that the committed `dist/` file matches the source, and uploads the built page as a downloadable artifact.

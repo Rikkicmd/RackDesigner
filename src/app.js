@@ -83,8 +83,8 @@ const CATALOG = [
   AVG('avg5-prm', 'NVR5 Premium 96-160TB', 2, 12, 6, 2, 2),
   AVG('avg5-prm2', 'NVR5 Premium 192-224TB', 2, 18, 4, 4, 2),
   AVG('avg5-prm3', 'NVR5 Premium 252-432TB', 2, 28, 4, 2, 2),
-  { id: 'avg', cat: 'server', name: 'NVR server, 2U', h: 2, pre: 'NVR', face: '#2f363c', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'BMC', prefix: 'BMC' }))] },
-  { id: 'nvr', cat: 'server', name: 'NVR / recorder', h: 2, pre: 'NVR', face: '#2f363c', psu: 1, groups: [g('rj45', 2, R({ prefix: 'LAN' }))] },
+  { id: 'avg', cat: 'server', name: 'NVR server, 2U', h: 2, pre: 'NVR', face: '#2f363c', psu: 2, bays: 8, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'BMC', prefix: 'BMC' }))] },
+  { id: 'nvr', cat: 'server', name: 'NVR / recorder', h: 2, pre: 'NVR', face: '#2f363c', psu: 1, bays: 8, groups: [g('rj45', 2, R({ prefix: 'LAN' }))] },
   { id: 'srv1', cat: 'server', name: 'Server, 1U', h: 1, pre: 'SRV', face: '#30373d', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] },
   { id: 'srv2', cat: 'server', name: 'Server, 2U', h: 2, pre: 'SRV', face: '#30373d', psu: 2, groups: [g('rj45', 4, R({ prefix: 'NIC' })), g('rj45', 1, R({ name: 'iDRAC', prefix: 'iDRAC' }))] },
   ...[['icx', 'ICX-500', '100M'], ['icx510', 'ICX-510', '1G'], ['icx510ia', 'ICX-510-IA', '1G']].map(([id, model, spd]) => ({ id, cat: 'zenitel', family: 'icx', look: 'icx', name: 'Zenitel ' + model, model, h: 1, pre: 'ICX', face: '#2a2d31', half: true, sw: 50, speed: spd, psu: 1, pin: 'DC in',
@@ -109,7 +109,7 @@ const CATALOG = [
   { id: 'shelf1', cat: 'acc', name: 'Shelf, 1U', h: 1, pre: 'SH', face: '#1d2124', groups: [], art: 'shelf' },
   { id: 'shelf3', cat: 'acc', name: 'Shelf, 3U', h: 3, pre: 'SH', face: '#1d2124', groups: [], art: 'shelf' },
   { id: 'fan', cat: 'acc', name: 'Fan tray', h: 1, pre: 'FAN', face: '#2a2e31', psu: 1, groups: [], art: 'fan' },
-  { id: 'desk-nvr', cat: 'onshelf', name: 'Desktop NVR, 8 PoE', h: 1, pre: 'NVR', face: '#2f363c', sw: 36, psu: 1, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' }), g('rj45', 8, { prefix: 'PoE', order: 'row' })] },
+  { id: 'desk-nvr', cat: 'onshelf', name: 'Desktop NVR, 8 PoE', h: 1, pre: 'NVR', face: '#2f363c', sw: 36, psu: 1, bays: 2, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' }), g('rj45', 8, { prefix: 'PoE', order: 'row' })] },
   { id: 'desk-sw', cat: 'onshelf', name: 'Desktop switch, 8 port', h: 1, pre: 'SW', face: '#2b3238', sw: 26, psu: 1, groups: [g('rj45', 8, { order: 'row' })] },
   { id: 'router', cat: 'onshelf', name: 'Router / modem', h: 1, pre: 'RTR', face: '#33302b', sw: 22, psu: 1, groups: [g('rj45', 1, { name: 'WAN', prefix: 'WAN', order: 'row' }), g('rj45', 4, { prefix: 'LAN', order: 'row' })] },
   { id: 'minipc', cat: 'onshelf', name: 'Mini PC / workstation', h: 1, pre: 'PC', face: '#30373d', sw: 16, psu: 1, groups: [g('rj45', 1, { name: 'LAN', prefix: 'LAN', order: 'row' })] },
@@ -207,6 +207,18 @@ function makeDev(type, u, side) {
   return d;
 }
 const devName = d => CAT_BY[d.type]?.name || 'Device';
+/* recorder drives: a size per bay */
+const HDD = ['1TB', '2TB', '3TB', '4TB', '6TB', '8TB', '10TB', '12TB', '14TB', '16TB', '18TB', '20TB', '22TB', '24TB'];
+const hasBays = d => CAT_BY[d.type]?.bays != null || d.bays != null;
+const baysOf = d => clamp(+(d.bays ?? CAT_BY[d.type]?.bays ?? 0) || 0, 0, 60);
+const drivesOf = d => Array.from({ length: baysOf(d) }, (_, i) => (d.drives || [])[i] || '');
+const rawTB = d => drivesOf(d).reduce((t, x) => t + (parseFloat(x) || 0), 0);
+function storageTxt(d) {
+  const dr = drivesOf(d).filter(Boolean); if (!dr.length) return '';
+  const by = new Map(); dr.forEach(x => by.set(x, (by.get(x) || 0) + 1));
+  return [...by].sort((a, b) => parseFloat(b[0]) - parseFloat(a[0])).map(([x, n]) => n + ' × ' + x).join(' + ') + ' = ' + rawTB(d) + ' TB raw';
+}
+const assetClash = d => d.asset ? P.racks.flatMap(r => r.devices).filter(o => o !== d && o.asset && o.asset.trim().toLowerCase() === d.asset.trim().toLowerCase()) : [];
 const isShelf = d => CAT_BY[d.type]?.art === 'shelf' || CAT_BY[d.type]?.art === 'drawer';   // holds other kit
 const isDrawer = d => CAT_BY[d.type]?.art === 'drawer';
 const isV = d => !!CAT_BY[d.type]?.vert;            // 0U vertical PDU at the back
@@ -405,7 +417,7 @@ function devArt(c, d, H) {
   else if (art === 'drawer') s += `<rect x="26" y="${H - 18}" width="${Math.min(110, LBLW - 40)}" height="9" rx="4.5" fill="#15181a" stroke="#6b757c"/><rect x="${LBLW - 6}" y="3" width="2" height="${H - 6}" fill="#15181a"/>`;
   else if (art === 'shelf') s += `<rect x="16" y="${H - 9}" width="${FW - 32}" height="8" fill="#5a636a"/><rect x="16" y="${H - 9}" width="${FW - 32}" height="2" fill="#7b858c"/>`;
   else if (art === 'fan') for (let i = 0, n = Math.floor((FW - LBLW - 40) / 150); i < n; i++) { const cx = LBLW + 100 + i * 150; s += `<circle cx="${cx}" cy="${H / 2}" r="${H * .38}" fill="#15181a" stroke="#454c52"/><circle cx="${cx}" cy="${H / 2}" r="${H * .1}" fill="#454c52"/>`; }
-  if (/^(srv|avg$|nvr|ccure)/.test(d.type)) { const cols = FW < 800 ? 2 : 4, rows = d.h === 1 ? 1 : 2, n = cols * rows; for (let i = 0; i < n; i++) { const col = i % (n / rows), row = Math.floor(i / (n / rows)); s += `<rect x="${FW - 36 - cols * 66 + col * 66}" y="${6 + row * (H - 12) / rows}" width="60" height="${(H - 12) / rows - 4}" rx="2" fill="#1b1f22" stroke="#454c52"/><circle cx="${FW - 36 - cols * 66 + col * 66 + 52}" cy="${6 + row * (H - 12) / rows + 6}" r="1.8" fill="#3bd16f"/>`; } }
+  if (/^(srv|avg$|nvr|ccure)/.test(d.type)) { const dr = hasBays(d) ? drivesOf(d) : null, cols = FW < 800 ? 2 : 4, rows = d.h === 1 ? 1 : 2, n = dr ? Math.min(dr.length, cols * rows * 2) : cols * rows, pr = Math.ceil(n / rows) || 1, cw = Math.min(60, (cols * 66) / pr - 6); for (let i = 0; i < n; i++) { const col = i % pr, row = Math.floor(i / pr), x = FW - 36 - cols * 66 + col * (cw + 6), y = 6 + row * (H - 12) / rows, bh = (H - 12) / rows - 4; s += `<rect x="${x}" y="${y}" width="${cw}" height="${bh}" rx="2" fill="${dr && !dr[i] ? '#121517' : '#1b1f22'}" stroke="#454c52"/>`; if (!dr || dr[i]) s += `<circle cx="${x + cw - 8}" cy="${y + 6}" r="1.8" fill="#3bd16f"/>`; if (dr && dr[i] && cw > 24) s += `<text x="${x + 5}" y="${y + bh - 5}" font-size="8" fill="#c9d3d8" font-family="PlexMono, monospace">${esc(dr[i])}</text>`; } }
   return s;
 }
 
@@ -445,11 +457,15 @@ function lookSVG(d, b, ports) { // the parts of a real faceplate that aren't por
     s += `<g transform="translate(${lx2},${H / 2 - 5})">${lit('#43e06e')}</g><g transform="translate(${lx2},${H / 2 + 5})">${lit('#2a3a2e')}</g>`;
   }
   if (c.look === 'avg') { // Avigilon NVR5: a mesh bezel over the drive bays, logo and power button on the right
-    const bx = LBLW, bw = W - bx - 130, rows = H > 60 ? (c.bays > 10 ? 3 : 2) : 1, cols = Math.ceil(Math.min(c.bays, 12) / rows);
+    const nb = baysOf(d), dr = drivesOf(d), bx = LBLW, bw = W - bx - 130, rows = H > 60 ? (nb > 10 ? 3 : 2) : 1, cols = Math.max(1, Math.ceil(Math.min(nb, 12) / rows));
+
     s += `<text x="26" y="10.5" font-size="7.6" font-weight="600" letter-spacing=".16em" fill="#c9d3d8" font-family="Plex, sans-serif">AVIGILON</text><text x="26" y="${H - 5}" font-size="8" fill="#9fb0b6" font-family="Plex, sans-serif">${esc(c.model)}</text>`;
     s += `<rect x="${bx}" y="4" width="${bw}" height="${H - 8}" rx="3" fill="#15181b" stroke="#3a4248"/>`;
-    for (let i = 0; i < rows * cols; i++) { const cw = (bw - 12) / cols, rh = (H - 16) / rows, cx = bx + 6 + (i % cols) * cw, cy = 8 + Math.floor(i / cols) * rh; s += `<rect x="${cx + 1}" y="${cy + 1}" width="${cw - 3}" height="${rh - 3}" rx="1.5" fill="#1d2226" stroke="#2c343a" stroke-width=".8"/><circle cx="${cx + cw - 7}" cy="${cy + rh / 2}" r="1.5" fill="#3d8bfd" opacity=".8"/>`; }
+    const cwB = (bw - 12) / cols, rhB = (H - 16) / rows, bayAt = i => [bx + 6 + (i % cols) * cwB, 8 + Math.floor(i / cols) * rhB];
+    for (let i = 0; i < Math.min(nb, 12); i++) { const [cx, cy] = bayAt(i), full = !dr.some(Boolean) || dr[i]; s += `<rect x="${cx + 1}" y="${cy + 1}" width="${cwB - 3}" height="${rhB - 3}" rx="1.5" fill="${full ? '#1d2226' : '#101315'}" stroke="#2c343a" stroke-width=".8"/>${full ? `<circle cx="${cx + cwB - 7}" cy="${cy + rhB / 2}" r="1.5" fill="#3d8bfd" opacity=".8"/>` : ''}`; }
     for (let x = bx + 4; x < bx + bw - 4; x += 5) s += `<line x1="${x}" y1="5" x2="${x - 4}" y2="${H - 5}" stroke="#000" stroke-opacity=".35" stroke-width="1.6"/>`;
+    if (cwB > 30) for (let i = 0; i < Math.min(nb, 12); i++) if (dr[i]) { const [cx, cy] = bayAt(i); s += `<rect x="${cx + 4}" y="${cy + rhB / 2 - 6}" width="${Math.min(34, cwB - 16)}" height="11" rx="2" fill="#0b0d0e" opacity=".85"/><text x="${cx + 6}" y="${cy + rhB / 2 + 2.5}" font-size="8" fill="#c9d3d8" font-family="PlexMono, monospace">${esc(dr[i])}</text>`; }
+    if (nb > 12) s += `<text x="${bx + bw - 4}" y="${H - 1.5}" font-size="6.5" text-anchor="end" fill="#8e9ba0" font-family="Plex, sans-serif">+${nb - 12} more bays${dr.slice(12).some(Boolean) ? ' · ' + rawTB(d) + ' TB raw' : ''}</text>`;
     const rx = bx + bw + 14;
     s += `<rect x="${rx}" y="${H / 2 - 11}" width="72" height="22" rx="3" fill="#0f1214" stroke="#3a4248"/><text x="${rx + 36}" y="${H / 2 + 3.5}" font-size="9" font-weight="600" letter-spacing=".14em" text-anchor="middle" fill="#e6ebee" font-family="Plex, sans-serif">AVIGILON</text>`;
     s += `<circle cx="${rx + 90}" cy="${H / 2}" r="6" fill="#1b1f22" stroke="#7d878e"/><path d="M${rx + 90},${H / 2 - 3.5}v3.2M${rx + 87.4},${H / 2 - 2}a3.4 3.4 0 1 0 5.2 0" fill="none" stroke="#4fa8ff" stroke-width="1.1" stroke-linecap="round"/>`;
@@ -708,6 +724,63 @@ function svgToPng(svg, W, H, scale = 2) {
   });
 }
 
+/* ---------- QR codes (byte mode, error correction M, versions 1-10), made here so it works offline ---------- */
+const QR = (() => {
+  const ECC = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26], BLK = [1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const raw = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+  const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z & 255; };
+  function divisor(deg) { const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1; for (let i = 0; i < deg; i++) { for (let j = 0; j < deg; j++) { r[j] = mul(r[j], root); if (j + 1 < deg) r[j] ^= r[j + 1]; } root = mul(root, 2); } return r; }
+  function remainder(data, dv) { const r = dv.map(() => 0); for (const b of data) { const f = b ^ r.shift(); r.push(0); dv.forEach((c, i) => { r[i] ^= mul(c, f); }); } return r; }
+  const align = v => { if (v === 1) return []; const n = Math.floor(v / 7) + 2, step = Math.floor((v * 8 + n * 3 + 5) / (n * 4 - 4)) * 2, out = [6]; for (let p = v * 4 + 10; out.length < n; p -= step) out.splice(1, 0, p); return out; };
+  return function make(text) {
+    const bytes = Array.from(new TextEncoder().encode(String(text)));
+    let v = 1;
+    for (; v <= 10; v++) { const cap = Math.floor(raw(v) / 8) - ECC[v - 1] * BLK[v - 1]; if (4 + (v < 10 ? 8 : 16) + bytes.length * 8 <= cap * 8) break; }
+    if (v > 10) return null;
+    const total = Math.floor(raw(v) / 8), nb = BLK[v - 1], el = ECC[v - 1], cap = total - el * nb;
+    const bits = []; const put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+    put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach(b => put(b, 8));
+    put(0, Math.min(4, cap * 8 - bits.length)); put(0, (8 - bits.length % 8) % 8);
+    const data = []; for (let i = 0; i < bits.length; i += 8) data.push(parseInt(bits.slice(i, i + 8).join(''), 2));
+    for (let p = 0xEC; data.length < cap; p ^= 0xEC ^ 0x11) data.push(p);
+    const dv = divisor(el), short = nb - total % nb, sl = Math.floor(total / nb), blocks = [];
+    for (let i = 0, k = 0; i < nb; i++) { const d = data.slice(k, k + sl - el + (i < short ? 0 : 1)); k += d.length; const e = remainder(d, dv); if (i < short) d.push(0); blocks.push(d.concat(e)); }
+    const cw = []; for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== sl - el || j >= short) cw.push(b[i]); });
+    const N = v * 4 + 17, M = Array.from({ length: N }, () => new Array(N).fill(false)), F = Array.from({ length: N }, () => new Array(N).fill(false));
+    const set = (x, y, d) => { M[y][x] = d; F[y][x] = true; };
+    for (let i = 0; i < N; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    for (const [cx, cy] of [[3, 3], [N - 4, 3], [3, N - 4]]) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy, dd = Math.max(Math.abs(dx), Math.abs(dy)); if (x >= 0 && x < N && y >= 0 && y < N) set(x, y, dd !== 2 && dd !== 4); }
+    const ap = align(v);
+    ap.forEach((a, i) => ap.forEach((b, j) => { if ((i === 0 && j === 0) || (i === 0 && j === ap.length - 1) || (i === ap.length - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+    const format = mask => { const d = mask; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((d << 10) | r) ^ 0x5412, bit = i => ((b >>> i) & 1) === 1;   // level M = 00
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i)); set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(N - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) set(8, N - 15 + i, bit(i)); set(8, N - 8, true); };
+    format(0);
+    if (v >= 7) { let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25); const b = (v << 12) | r; for (let i = 0; i < 18; i++) { const d = ((b >>> i) & 1) === 1, a = N - 11 + i % 3, c = Math.floor(i / 3); set(a, c, d); set(c, a, d); } }
+    let i = 0;
+    for (let right = N - 1; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vt = 0; vt < N; vt++) for (let j = 0; j < 2; j++) { const x = right - j, up = ((right + 1) & 2) === 0, y = up ? N - 1 - vt : vt; if (!F[y][x] && i < cw.length * 8) { M[y][x] = ((cw[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+    const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+    const flip = m => { for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (!F[y][x] && MASKS[m](x, y)) M[y][x] = !M[y][x]; };
+    const penalty = () => { // runs of five or more, 2 x 2 blocks and dark / light balance
+      let p = 0, dark = 0;
+      for (let k = 0; k < 2; k++) for (let a = 0; a < N; a++) { let run = 1; for (let b = 1; b < N; b++) { const c = k ? M[b][a] : M[a][b], pc = k ? M[b - 1][a] : M[a][b - 1]; if (c === pc) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+      for (let y = 0; y < N - 1; y++) for (let x = 0; x < N - 1; x++) { const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3; }
+      for (const row of M) for (const c of row) if (c) dark++;
+      return p + Math.floor(Math.abs(dark * 20 - N * N * 10) / (N * N)) * 10;
+    };
+    let best = 0, bp = Infinity;
+    for (let m = 0; m < 8; m++) { flip(m); format(m); const pn = penalty(); if (pn < bp) { bp = pn; best = m; } flip(m); }
+    flip(best); format(best);
+    return { size: N, modules: M };
+  };
+})();
+function qrSVG(text, px = 4, o = {}) { // a QR code as an SVG, with the quiet zone round it
+  const q = QR(text); if (!q) return '';
+  const n = q.size + 8; let d = '';
+  q.modules.forEach((row, y) => row.forEach((c, x) => { if (c) d += `M${x + 4},${y + 4}h1v1h-1z`; }));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" width="${n * px}" height="${n * px}" shape-rendering="crispEdges"${o.cls ? ` class="${o.cls}"` : ''}><rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+
 /* ---------- rendering the UI ---------- */
 let pane = 'rack';                         // phone: which pane shows (kit, rack, table, details)
 function setPane(p) {
@@ -851,6 +924,7 @@ function devPanel(d) {
   ${badDev(r, d) ? `<div class="warnbox">${isShelf(d) && shelfUsed(d) > 100 ? `The kit on this shelf takes ${shelfUsed(d)}% of its width. Make some of it narrower or move it to another shelf.` : "This doesn't fit here: it overlaps other kit or runs past the top of the rack."}</div>` : ''}
   <div data-scope="dev">
     <div class="g2">${fld('Label', 'label', d.label)}${c.family ? fld('Model', 'ftype', d.type, { select: CATALOG.filter(x => x.family === c.family).map(x => [x.id, x.model]) }) : fld('Model', 'model', d.model, { ph: c.name })}</div>
+    ${assetSec(d)}
     ${c.family && !stdPorts(d) ? `<div class="warnbox">This ${esc(c.model)} has a port layout from an older version or one you changed. <button class="btn sm" data-act="stdports">Use the ${esc(c.model)} faceplate</button></div>` : ''}
     ${posSel}
     ${isV(d) ? `<div class="g2">${fld('Mounted', 'vside', d.v || 'left', { select: [['left', 'Back, left side'], ['right', 'Back, right side']] })}${rackSel}</div><p class="note">0U PDUs show in the Back view. Two fit on each side.</p>`
@@ -862,6 +936,7 @@ function devPanel(d) {
     ${isDrawer(d) ? drawerSec(d) : isShelf(d) ? `<div class="sec">On this shelf · ${shelfUsed(d)}% of the width used</div>${shelfItems(d).length ? `<div class="rlist">${shelfItems(d).map(x => `<button data-seldev="${x.id}"><span class="u mono">${swOf(x)}%</span><span class="t"><b>${esc(x.label)}</b> ${esc(x.model || devName(x))}</span></button>`).join('')}</div>` : '<p class="note">Nothing yet. Drag shelf kit onto it, or add it from the Shelf kit list while this shelf is selected.</p>'}` : ''}
     <div class="g2">${fld('IP address', 'ip', d.ip, { ph: 'e.g. 10.0.0.5' })}${fld('Serial no.', 'serial', d.serial)}</div>
     ${fld('Notes', 'notes', d.notes, { area: 1, ph: 'Firmware, licences, warranty…' })}
+    ${drivesSec(d)}
     ${powerSec(d)}
   </div>
 
@@ -884,6 +959,19 @@ function devPanel(d) {
     <label class="f"><span>VLAN (optional)</span><input id="bk-vlan" placeholder="e.g. 30"></label>
     <button class="btn pri" data-act="bulk">Patch ports</button></div>` : ''}
   ${ps.length ? `<div class="btns"><button class="btn danger" data-act="clearports">Clear all port allocations</button></div>` : ''}`;
+}
+function assetSec(d) { // the asset code typed in for this device, and its QR code
+  const cl = assetClash(d);
+  return `<div class="g2">${fld('Asset code', 'asset', d.asset, { ph: 'Type the asset code' })}<div></div></div>
+    ${cl.length ? `<div class="warnbox">${esc(cl.map(o => o.label).join(', '))} ${cl.length > 1 ? 'have' : 'has'} the same asset code.</div>` : ''}
+    ${d.asset ? `<div class="qrcard"><div class="qr">${qrSVG(d.asset, 3)}</div><div><small>Asset code</small><b class="mono">${esc(d.asset)}</b><span>${esc(d.label)} · ${esc(d.model || devName(d))}</span><button class="btn sm" data-act="qrpng">Save QR as PNG</button></div></div>` : ''}`;
+}
+function drivesSec(d) { // recorder drive bays and the size of drive in each
+  if (!hasBays(d)) return '';
+  const dr = drivesOf(d), opts = v => `<option value="">Empty</option>${HDD.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('')}${v && !HDD.includes(v) ? `<option selected>${esc(v)}</option>` : ''}`;
+  return `<div class="sec"><span>Drives · ${storageTxt(d) || 'none fitted yet'}</span></div>
+    <div class="g2">${fld('Drive bays', 'bays', baysOf(d), { type: 'number', min: 0, max: 60 })}<label class="f"><span>Fill every bay with</span><select data-fill="1"><option value="">Choose a size…</option>${HDD.map(x => `<option>${x}</option>`).join('')}<option value="-">Empty them all</option></select></label></div>
+    ${dr.length ? `<div class="bays">${dr.map((x, i) => `<label><span>${i + 1}</span><select data-bay="${i}" aria-label="Bay ${i + 1}">${opts(x)}</select></label>`).join('')}</div>` : ''}`;
 }
 function drawerSec(d) { // the six slots of an IP-ACM drawer, with their labels
   const n = CAT_BY[d.type].slots, items = shelfItems(d);
@@ -974,7 +1062,8 @@ function devTip(d) {
   const row = (k, v) => v ? `<div><span class="k">${k}</span>${esc(v)}</div>` : '';
   return `<div class="tt"><b>${esc(d.label)}</b></div>` + row('Kit', devName(d)) + row('Model', d.model) + row('Position', r.name + ' ' + posTxt(d) + (inRack(d) ? ' (' + d.h + 'U)' : ''))
     + (isShelf(d) ? row('On the shelf', shelfItems(d).map(x => x.label).join(', ') || 'nothing yet') + row('Shelf space', shelfUsed(d) + '% used') : '')
-    + row('IP address', d.ip) + row('Serial no.', d.serial) + (ps.length ? row('Ports', used + ' of ' + ps.length + ' in use') : '') + row('Notes', d.notes)
+    + row('Asset code', d.asset) + row('Drives', storageTxt(d)) + row('IP address', d.ip) + row('Serial no.', d.serial)
+ + (ps.length ? row('Ports', used + ' of ' + ps.length + ' in use') : '') + row('Notes', d.notes)
     + `<div class="path">${shelfOf(d) ? 'Click to edit or move along the shelf' : 'Drag to move · click to edit'}</div>`;
 }
 function showTip(html, e) {
@@ -1078,12 +1167,12 @@ function layoutRows() {
   const out = [];
   for (const r of P.racks) for (const d of orderedDevs(r)) {
     const ps = portList(d), used = ps.filter(p => portStatus(d, p.id) !== 'free').length;
-    out.push([r.name, r.location || '', posShort(d), inRack(d) && !isV(d) ? d.h : '', d.label, (d.tag || '').replace(/\n/g, ' / '), devName(d), d.model || '', d.ip || '', d.serial || '', ps.length ? `${used} / ${ps.length}` : '', d.notes || '']);
+    out.push([r.name, r.location || '', posShort(d), inRack(d) && !isV(d) ? d.h : '', d.label, d.asset || '', (d.tag || '').replace(/\n/g, ' / '), devName(d), d.model || '', storageTxt(d), d.ip || '', d.serial || '', ps.length ? `${used} / ${ps.length}` : '', d.notes || '']);
   }
   return out;
 }
 function posShort(d) { const sh = shelfOf(d); if (isV(d)) return '0U ' + (d.v === 'right' ? 'R' : 'L'); return sh ? (isDrawer(sh) ? `${sh.label} slot ${d.slot}` : `On ${sh.label}`) : uRange(d).replace('–', '-') + (sideOf(d) === 'left' ? ' L' : sideOf(d) === 'right' ? ' R' : ''); }
-const LCOLS = ['Rack', 'Location', 'U', 'Height (U)', 'Label', 'Label text', 'Kit', 'Model', 'IP address', 'Serial no.', 'Ports used', 'Notes'];
+const LCOLS = ['Rack', 'Location', 'U', 'Height (U)', 'Label', 'Asset code', 'Label text', 'Kit', 'Model', 'Drives', 'IP address', 'Serial no.', 'Ports used', 'Notes'];
 function powerRows() { // every power inlet and the outlet that feeds it
   const out = [];
   for (const r of P.racks) for (const d of orderedDevs(r)) for (const p of portList(d).filter(q => q.kind === 'inlet')) {
@@ -1218,8 +1307,8 @@ async function exportPDF(free) {
     const maxH = PH - M * 2 - 20, maxW = 262;
     const s = Math.min(maxW / x.W, maxH / x.H), w = x.W * s, h = x.H * s;
     doc.addImage(c.toDataURL('image/png'), 'PNG', M, M + 18, w, h);
-    const rows = orderedDevs(r).map(d => { const ps = portList(d); return [posShort(d), d.label, d.model || devName(d), d.ip || '', ps.length ? ps.filter(p => portStatus(d, p.id) !== 'free').length + '/' + ps.length : '']; });
-    pdfTable(doc, M + 18, [{ h: 'U', w: .1 }, { h: 'Label', w: .2 }, { h: 'Kit / model', w: .38 }, { h: 'IP address', w: .18 }, { h: 'Ports', w: .14 }], rows,
+    const rows = orderedDevs(r).map(d => { const ps = portList(d); return [posShort(d), d.label, d.asset || '', (d.model || devName(d)) + (storageTxt(d) ? ' (' + storageTxt(d) + ')' : ''), d.ip || '', ps.length ? ps.filter(p => portStatus(d, p.id) !== 'free').length + '/' + ps.length : '']; });
+    pdfTable(doc, M + 18, [{ h: 'U', w: .1 }, { h: 'Label', w: .15 }, { h: 'Asset', w: .16 }, { h: 'Kit / model', w: .32 }, { h: 'IP address', w: .16 }, { h: 'Ports', w: .11 }], rows,
       { left: M + w + 10, right: PW - M, bottom: PH - M, top: M + 18, header: () => header() });
   }
   doc.addPage(); header('Port allocation');
@@ -1241,6 +1330,25 @@ async function exportPDF(free) {
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(124, 138, 136); doc.text(`Page ${i} of ${n}`, PW - M, PH - 6, { align: 'right' }); }
   saveBlob(fileBase() + '-rack-design.pdf', doc.output('blob'), [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]);
+}
+
+function exportAssetLabels() { // A4 sheet of asset labels: QR code, asset code, device, where it is
+  const devs = []; for (const r of P.racks) for (const d of orderedDevs(r)) if (d.asset) devs.push([r, d]);
+  if (!devs.length) { toast('No asset codes yet. Type one in a device\'s details.'); return; }
+  const doc = new jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  const LW = 63.5, LH = 38.1, cols = 3, rowsN = 7, mx = (210 - cols * LW) / 2, my = (297 - rowsN * LH) / 2;
+  devs.forEach(([r, d], i) => {
+    if (i && i % (cols * rowsN) === 0) doc.addPage();
+    const k = i % (cols * rowsN), x = mx + (k % cols) * LW, y = my + Math.floor(k / cols) * LH;
+    doc.setDrawColor(210); doc.setLineWidth(.1); doc.rect(x + 1, y + 1, LW - 2, LH - 2);
+    const q = QR(d.asset);
+    if (q) { const s = 28, m = s / (q.size + 2); doc.setFillColor(0); q.modules.forEach((row, yy) => row.forEach((c, xx) => { if (c) doc.rect(x + 4 + (xx + 1) * m, y + (LH - s) / 2 + (yy + 1) * m, m + .02, m + .02, 'F'); })); }
+    const tx = x + 34, tw = LW - 36;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0); doc.text(doc.splitTextToSize(pdfTxt(d.asset), tw).slice(0, 2), tx, y + 9);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(40);
+    doc.text([d.label, d.model || devName(d), r.name + ' ' + posShort(d)].flatMap(t => doc.splitTextToSize(pdfTxt(t), tw)).slice(0, 5), tx, y + 18);
+  });
+  saveBlob(fileBase() + '-asset-labels.pdf', doc.output('blob'), [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }]);
 }
 
 /* ---------- project files ---------- */
@@ -1308,9 +1416,12 @@ function example() {
   link(psu, inl(psu), pda, out(pda, 3)); link(rtr, inl(rtr), pda, out(pda, 4)); const pc = r.devices.find(x => x.label === 'PC-01'); link(pc, inl(pc), pda, out(pda, 5));
   setPort(pdu, P1(pdu)[1].id, 'ext', 'Rack fans');
 
+  nvr.drives = Array(12).fill('8TB');
+  [[sw1, 'AST-000101'], [sw2, 'AST-000102'], [srv, 'AST-000103'], [nvr, 'AST-000104'], [ups, 'AST-000105'], ...acms.map((a, i) => [a, 'AST-00011' + (i + 1)])].forEach(([d, a]) => { d.asset = a; });
   sel = { rack: r.id, dev: null, port: null };
   reindex();
 }
+
 
 /* ---------- events ---------- */
 function svgPt(e) { const s = $('#rsvg'); const pt = s.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(s.getScreenCTM().inverse()); }
@@ -1462,6 +1573,11 @@ function onPanelChange(e) {
     if (y.link && !(y.link.d === d.id && y.link.p === pid) && !confirm(`${o.label} ${portById(o, op).name} already feeds ${portRef(y.link.d, y.link.p, false)}. Plug ${d.label} in there instead?`)) { renderPanel(); return; }
     change(() => link(d, pid, o, op)); toast(`${d.label} ${portById(d, pid).name} now fed from ${o.label} ${portById(o, op).name}.`); return;
   }
+  if (t.dataset.fill || t.dataset.bay) { // drive sizes
+    const d = devOf(sel.dev), v2 = t.value;
+    if (t.dataset.fill && !v2) return;
+    change(() => { const dr = drivesOf(d); if (t.dataset.fill) dr.fill(v2 === '-' ? '' : v2); else dr[+t.dataset.bay] = v2; d.drives = dr; }); return;
+  }
   if (t.dataset.ak) { // drawer label table
     const it = devOf(t.closest('[data-acm]').dataset.acm), k2 = t.dataset.ak, v2 = t.value.trim();
     change(() => { it[k2] = k2 === 'tag' ? v2.split(/\s*\/\s*/).join('\n') : v2; }, { panel: false }); return;
@@ -1508,6 +1624,8 @@ function onPanelChange(e) {
       change(() => { r.devices = r.devices.filter(x => !moving.includes(x)); d.u = sp.u; if (sp.side !== 'full') d.side = sp.side; else delete d.side; nr.devices.push(...moving); }); sel.rack = nr.id; render(); return;
     }
     if (k === 'ftype') { if (!swapType(d, v)) t.value = d.type; return; }
+    if (k === 'bays') { const n = clamp(parseInt(v, 10) || 0, 0, 60), lost = drivesOf(d).slice(n).filter(Boolean).length; if (lost && !confirm(`${lost} drive${lost > 1 ? 's' : ''} in the bays you're taking away would be cleared. Carry on?`)) { t.value = baysOf(d); return; } change(() => { d.bays = n; d.drives = drivesOf(d).slice(0, n); }); return; }
+    if (k === 'asset') { change(() => { if (v) d.asset = v; else delete d.asset; }); return; }
     if (k === 'psu') {
       const n = clamp(parseInt(v, 10) || 0, 0, 4), lost = portList(d).filter(p => p.kind === 'inlet' && p.n > n && d.ports[p.id]);
       if (lost.length && !confirm(`${lost.map(p => p.name).join(', ')} ${lost.length > 1 ? 'are' : 'is'} plugged in or allocated and would be cleared. Carry on?`)) { t.value = psuOf(d); return; }
@@ -1556,14 +1674,16 @@ function onPanelClick(e) {
   if (b.dataset.selport) { sel.port = b.dataset.selport; showFace(devOf(sel.dev), sel.port); render(); return; }
   const act = b.dataset.act, d = sel.dev && devOf(sel.dev), r = curRack();
   switch (act) {
-    case 'duprack': change(() => { const n = JSON.parse(JSON.stringify(r)); n.id = uid(); n.name = r.name + ' copy'; const map = {}; for (const x of n.devices) { map[x.id] = uid(); } for (const x of n.devices) { x.id = map[x.id]; if (x.on) x.on = map[x.on]; for (const k in x.ports) { const l = x.ports[k].link; if (l) { if (map[l.d]) l.d = map[l.d]; else delete x.ports[k].link; } } } P.racks.push(n); sel.rack = n.id; }); break;
+    case 'duprack': change(() => { const n = JSON.parse(JSON.stringify(r)); n.id = uid(); n.name = r.name + ' copy'; const map = {}; for (const x of n.devices) { map[x.id] = uid(); } for (const x of n.devices) { x.id = map[x.id]; delete x.asset; if (x.on) x.on = map[x.on]; for (const k in x.ports) { const l = x.ports[k].link; if (l) { if (map[l.d]) l.d = map[l.d]; else delete x.ports[k].link; } } } P.racks.push(n); sel.rack = n.id; }); break;
     case 'delrack': if (P.racks.length > 1 && confirm(`Delete ${r.name} and everything in it?`)) change(() => { reindex(); for (const x of [...r.devices]) removeDev(x.id); P.racks = P.racks.filter(x => x !== r); sel.rack = P.racks[0].id; sel.dev = sel.port = null; }); break;
-    case 'drawopen': change(() => { d.open = !d.open; }); break;
+    case 'qrpng': { const svg = qrSVG(d.asset, 12); const n = (svg.match(/viewBox="0 0 (\d+)/) || [])[1] * 12; svgToPng(svg, n, n, 1).then(cv => cv.toBlob(bl => saveBlob('QR-' + d.asset.replace(/[^\w\-]+/g, '_') + '.png', bl, [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }]), 'image/png')); break; }
+    case 'drawopen':
+ change(() => { d.open = !d.open; }); break;
     case 'addacm': addToShelf('ipacm', d, +b.dataset.slot); break;
-    case 'dup': if (isV(d)) { const rr = rackOf(d.id), side = vItems(rr, 'left').length <= vItems(rr, 'right').length ? 'left' : 'right'; if (vItems(rr, side).length >= 2) { toast('No room for another 0U PDU.'); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.v = side; n.vi = 99; n.label = nextLabel(CAT_BY[d.type].pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
-    if (shelfOf(d) && isDrawer(shelfOf(d))) { const sh = shelfOf(d), k = freeSlot(sh); if (!k) { toast(`${sh.label} is full.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.slot = k; n.label = nextLabel(CAT_BY[d.type].pre); n.tag = ''; for (const kk in n.ports) delete n.ports[kk].link; rackOf(d.id).devices.push(n); }); sel.dev = n.id; render(); break; }
-    if (shelfOf(d)) { const sh = shelfOf(d); if (shelfUsed(sh) + swOf(d) > 100) { toast(`Not enough room on ${sh.label}.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.label = nextLabel(CAT_BY[d.type].pre); n.slot = (d.slot || 0) + .5; for (const k in n.ports) delete n.ports[k].link; rackOf(d.id).devices.push(n); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); }); reindex(); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); sel.dev = n.id; render(); break; }
-    { const c = CAT_BY[d.type]; const rr = rackOf(d.id); if (sideOf(d) !== 'full') { const sp = freeSpot(rr, d.h, true); if (!sp) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = sp.u; n.side = sp.side; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; } const above = placeOK(rr, d.u + d.h, d.h) ? d.u + d.h : lowestFree(rr, d.h); if (!above) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = above; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
+    case 'dup': if (isV(d)) { const rr = rackOf(d.id), side = vItems(rr, 'left').length <= vItems(rr, 'right').length ? 'left' : 'right'; if (vItems(rr, side).length >= 2) { toast('No room for another 0U PDU.'); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.v = side; n.vi = 99; delete n.asset; n.label = nextLabel(CAT_BY[d.type].pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
+    if (shelfOf(d) && isDrawer(shelfOf(d))) { const sh = shelfOf(d), k = freeSlot(sh); if (!k) { toast(`${sh.label} is full.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.slot = k; delete n.asset; n.label = nextLabel(CAT_BY[d.type].pre); n.tag = ''; for (const kk in n.ports) delete n.ports[kk].link; rackOf(d.id).devices.push(n); }); sel.dev = n.id; render(); break; }
+    if (shelfOf(d)) { const sh = shelfOf(d); if (shelfUsed(sh) + swOf(d) > 100) { toast(`Not enough room on ${sh.label}.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); delete n.asset; n.label = nextLabel(CAT_BY[d.type].pre); n.slot = (d.slot || 0) + .5; for (const k in n.ports) delete n.ports[k].link; rackOf(d.id).devices.push(n); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); }); reindex(); shelfItems(sh).forEach((x, k) => { x.slot = k + 1; }); sel.dev = n.id; render(); break; }
+    { const c = CAT_BY[d.type]; const rr = rackOf(d.id); if (sideOf(d) !== 'full') { const sp = freeSpot(rr, d.h, true); if (!sp) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = sp.u; n.side = sp.side; delete n.asset; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; } const above = placeOK(rr, d.u + d.h, d.h) ? d.u + d.h : lowestFree(rr, d.h); if (!above) { toast(`No ${d.h}U space left.`); break; } let n; change(() => { n = JSON.parse(JSON.stringify(d)); n.id = uid(); n.u = above; delete n.asset; n.label = nextLabel(c.pre); for (const k in n.ports) delete n.ports[k].link; rr.devices.push(n); }); sel.dev = n.id; render(); break; }
     case 'stdports': swapType(d, d.type); break;
     case 'up': moveDev(d, 1); break;
     case 'sl': slideOnShelf(d, -1); break;
@@ -1693,7 +1813,8 @@ function init() {
   menu.addEventListener('click', e => {
     const b = e.target.closest('[data-x]'); if (!b) return; menu.hidden = true;
     const free = $('#x-free').checked;
-    ({ xlsx: () => exportXLSX(free), csv: () => exportCSV(free), pdf: () => exportPDF(free), png: () => exportPNG(false), pngboth: () => exportPNG(false, true), svg: exportSVG, pdfrack: exportRackPDF, pngall: () => exportPNG(true) })[b.dataset.x]();
+    ({ xlsx: () => exportXLSX(free), csv: () => exportCSV(free), pdf: () => exportPDF(free), png: () => exportPNG(false), pngboth: () => exportPNG(false, true), assets: exportAssetLabels,
+ svg: exportSVG, pdfrack: exportRackPDF, pngall: () => exportPNG(true) })[b.dataset.x]();
   });
   $('#b-theme').onclick = () => {
     const root = document.documentElement, dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
