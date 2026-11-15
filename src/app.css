@@ -304,3 +304,13 @@ svg.rack .vslot { pointer-events: all; }
 .bays label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink3); }
 .bays label span { width: 16px; text-align: right; flex: none; }
 .bays select { min-width: 0; flex: 1; font: inherit; font-size: 12.5px; padding: 4px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+
+/* choosing what a port patches to */
+.patchbox .btn.full { width: 100%; justify-content: center; }
+.patchbox .or { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; color: var(--ink3); font-size: 12px; }
+.patchbox .or::before, .patchbox .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.patchbox select:disabled { opacity: .6; }
+#stage.pick svg.rack .port.nopick { opacity: .22; pointer-events: none; }
+#stage.pick svg.rack .port.canpick { cursor: crosshair; }
+#stage.pick svg.rack .port.canpick .sock { stroke: #ffd54a; stroke-width: 1.4; }
+#stage.pick svg.rack .port.picking .sock { stroke: #ffd54a; stroke-width: 2.6; }

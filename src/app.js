@@ -649,21 +649,44 @@ function portCentre(r, d, pid) {
   if (!p) return null;
   return { x: b.x + p.x + p.w / 2, y: b.y + p.y + p.h / 2, kind: p.kind };
 }
-function leadPath(a, b) {
+function leadChannels(r) { // cable managers and brush plates the patch leads are dressed through (front view)
+  if (face !== 'front') return [];
+  return r.devices.filter(x => inRack(x) && !isV(x) && sideOf(x) === 'full' && ['cm', 'brush'].includes(CAT_BY[x.type]?.art)).map(x => ({ d: x, y: devY(r, x) + x.h * UH / 2, n: 0 }));
+}
+function pickChannel(chans, a, b) { // the manager between the two ends, or one right next to them
+  const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y), mid = (a.y + b.y) / 2;
+  let best = null;
+  for (const c of chans) { const ok = (c.y > lo && c.y < hi) || Math.abs(c.y - mid) < UH * 1.3; if (ok && (!best || Math.abs(c.y - mid) < Math.abs(best.y - mid))) best = c; }
+  return best;
+}
+function leadPath(a, b, ch) {
+  if (ch) { // down (or up) into the manager, along it, and out to the other port
+    const lane = ((ch.n++ % 9) - 4) * 2.3, cy = ch.y + lane, s = Math.sign(b.x - a.x) || 1, f = v => v.toFixed(1);
+    if (Math.abs(b.x - a.x) < 28) return `M${f(a.x)},${f(a.y)} C${f(a.x)},${f(cy)} ${f(b.x)},${f(cy)} ${f(b.x)},${f(b.y)}`;
+    return `M${f(a.x)},${f(a.y)} C${f(a.x)},${f(cy)} ${f(a.x)},${f(cy)} ${f(a.x + s * 14)},${f(cy)} L${f(b.x - s * 14)},${f(cy)} C${f(b.x)},${f(cy)} ${f(b.x)},${f(cy)} ${f(b.x)},${f(b.y)}`;
+  }
   const sag = 18 + Math.min(60, Math.abs(a.x - b.x) * .08);
   return `M${a.x.toFixed(1)},${a.y.toFixed(1)} C${a.x.toFixed(1)},${(a.y + sag).toFixed(1)} ${b.x.toFixed(1)},${(b.y + sag).toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;
 }
 function leadCol(x, kind) { if (x.colour) return CABLE_COL[x.colour] || '#2f74d0'; return kind === 'lc' || kind === 'sc' ? '#2ec4d6' : isPow(kind) ? '#16191c' : '#2f74d0'; }
+function channelFront(r, c) { // the front of a manager drawn over the leads in it, so they run behind the rings and bristles
+  const b = devBox(r, c.d), H = b.h, art = CAT_BY[c.d.type].art; let s = '';
+  if (art === 'cm') for (let i = 0, n = Math.floor((FW - 190) / 66); i < n; i++) { const x = b.x + LBLW + 10 + i * 66; s += `<rect x="${x}" y="${b.y + H * .18}" width="44" height="${H * .64}" rx="5" fill="#15181a" opacity=".62"/><rect x="${x}" y="${b.y + H * .18}" width="44" height="${H * .64}" rx="5" fill="none" stroke="#4b545b"/>`; }
+  else { for (let x = b.x + LBLW + 6; x < b.x + FW - 44; x += 4) s += `<line x1="${x}" y1="${b.y + H * .34}" x2="${x + 1.5}" y2="${b.y + H * .66}" stroke="#41484e" stroke-width="1" opacity=".75"/>`; }
+  return s;
+}
 function leadsSVG(r) {
-  let s = ''; const done = new Set();
+  let s = ''; const done = new Set(), chans = leadChannels(r);
   for (const d of r.devices) for (const pid in d.ports) {
     const x = d.ports[pid]; if (!x.link) continue;
     const key = [d.id + pid, x.link.d + x.link.p].sort().join('~'); if (done.has(key)) continue; done.add(key);
     const o = devOf(x.link.d); if (!o || rackOf(o.id) !== r) continue;
     const a = portCentre(r, d, pid), b = portCentre(r, o, x.link.p); if (!a || !b) continue;
-    const col = leadCol(x, a.kind);
-    s += `<path d="${leadPath(a, b)}" fill="none" stroke="${isPow(a.kind) && !x.colour ? '#c9d0d5' : '#000'}" stroke-opacity="${isPow(a.kind) && !x.colour ? '.55' : '.35'}" stroke-width="4.2" stroke-linecap="round"/><path d="${leadPath(a, b)}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" opacity=".92"/>`;
+    const col = leadCol(x, a.kind), ch = isPow(a.kind) ? null : pickChannel(chans, a, b), path = leadPath(a, b, ch);
+    if (ch) ch.used = true;
+    s += `<path d="${path}" fill="none" stroke="${isPow(a.kind) && !x.colour ? '#c9d0d5' : '#000'}" stroke-opacity="${isPow(a.kind) && !x.colour ? '.55' : '.35'}" stroke-width="4.2" stroke-linecap="round"/><path d="${path}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" opacity=".92"/>`;
   }
+  for (const c of chans) if (c.used) s += channelFront(r, c);
   return `<g class="leads" pointer-events="none">${s}</g>`;
 }
 
@@ -835,6 +858,11 @@ function renderRack() {
   const r = curRack(), x = rackSVG(r, { interactive: true });
   $('#stage').classList.toggle('pick', !!pick);
   $('#stage').innerHTML = `<svg class="rack" id="rsvg" viewBox="0 0 ${x.W} ${x.H}" width="${Math.round(x.W * zoom)}" height="${Math.round(x.H * zoom)}" style="color:var(--ink)">${x.body}</svg>`;
+  if (pick) { // light the ports the picked port can patch to, dim the rest
+    const kA = portById(devOf(pick.d), pick.p)?.kind;
+    for (const el of $$('#rsvg .port')) { const [did, pid] = el.dataset.p.split('|'); if (did === pick.d && pid === pick.p) { el.classList.add('picking'); continue; } const q = portById(devOf(did), pid); el.classList.add(q && canPatch(kA, q.kind) ? 'canpick' : 'nopick'); }
+  }
+
 }
 function fitZoom(mode) {
   const st = $('#stage'), r = curRack();
@@ -915,8 +943,6 @@ function rackPanel(r) {
 function devPanel(d) {
   const c = CAT_BY[d.type], r = rackOf(d.id), ps = portList(d);
   const used = ps.filter(p => portStatus(d, p.id) !== 'free').length;
-  const others = [];
-  for (const rr of P.racks) for (const o of orderedDevs(rr)) if (o.id !== d.id && portList(o).length) others.push([o.id, (rr !== r ? rr.name + ' / ' : '') + o.label]);
   const sh = shelfOf(d), shelves = r.devices.filter(x => isShelf(x) && inRack(x) && x.id !== d.id && accepts(x, d.type));
   const posSel = !isShelf(d) && !isV(d) && (sh || shelves.length) ? fld('Where', 'pos', sh ? sh.id : '', { select: [...(c.acm ? [] : [['', 'In the rack']]), ...shelves.map(x => [x.id, (isDrawer(x) ? 'In drawer ' : 'On shelf ') + x.label + ' (U' + uRange(x) + ', ' + (isDrawer(x) ? (CAT_BY[x.type].slots - shelfItems(x).filter(y => y.id !== d.id).length) + ' slots free' : (100 - shelfUsed(x, d.id)) + '% free') + ')'])] }) : '';
   const rackSel = fld('Rack', 'rack', r.id, { select: P.racks.map(x => [x.id, x.name]) });
@@ -950,14 +976,7 @@ function devPanel(d) {
     <label><span>First no.</span><input data-gk="start" type="number" min="0" max="999" value="${gr.start}"></label>
     <label><span>Prefix</span><input data-gk="prefix" value="${esc(gr.prefix)}"></label>
     <button class="x" data-act="delgrp" title="Remove these ports">×</button></div>`).join('') || '<p class="note">No ports. Press Add ports to give it some.</p>'}
-  ${ps.length && others.length ? `<div class="sec">Patch one to one</div>
-  <div class="box" id="bulk"><p class="note" style="margin:0 0 8px">Patch a run of this ${esc(d.label)}'s ports straight across to another device, e.g. patch panel ports 1–24 to switch ports 1–24.</p>
-    <div class="g2"><label class="f"><span>From port</span><select id="bk-from">${ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label>
-    <label class="f"><span>How many</span><input id="bk-n" type="number" min="1" max="${ps.length}" value="${Math.min(ps.length, 24)}"></label></div>
-    <label class="f"><span>To device</span><select id="bk-dev">${others.map(([id, n]) => `<option value="${id}">${esc(n)}</option>`).join('')}</select></label>
-    <label class="f"><span>Starting at its port</span><select id="bk-to"></select></label>
-    <label class="f"><span>VLAN (optional)</span><input id="bk-vlan" placeholder="e.g. 30"></label>
-    <button class="btn pri" data-act="bulk">Patch ports</button></div>` : ''}
+
   ${ps.length ? `<div class="btns"><button class="btn danger" data-act="clearports">Clear all port allocations</button></div>` : ''}`;
 }
 function assetSec(d) { // the asset code typed in for this device, and its QR code
@@ -997,23 +1016,36 @@ function powerSec(d) { // which UPS / PDU outlet feeds each power inlet, and wha
       return `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(o.label + ' ' + q.name)}${busy ? ' (in use: ' + esc(portRef(y.link.d, y.link.p, false)) + ')' : ''}</option>`; }).join('')}</optgroup>`).join('')}</select></label>`; }).join('');
   return s;
 }
-function fillBulkTo() {
-
-  const s = $('#bk-dev'), t = $('#bk-to'); if (!s || !t) return;
-  const o = devOf(s.value); t.innerHTML = portList(o).map(p => `<option value="${p.id}">${esc(p.name)}${portStatus(o, p.id) !== 'free' ? ' (in use)' : ''}</option>`).join('');
+const canPatch = (kA, kB) => isPow(kA) === isPow(kB) && !(isPow(kA) && kA === kB);   // data to data; power outlet to power inlet
+function patchPicker(d, pid) { // choose the other end: on the rack, or from a list of compatible ports
+  const p = portById(d, pid), groups = [];
+  for (const rr of P.racks) {
+    const opts = orderedDevs(rr).filter(o => o.id !== d.id && portList(o).some(q => canPatch(p.kind, q.kind))).map(o => `<option value="${o.id}">${esc((isV(o) ? '0U' : shelfOf(o) ? '↳' : 'U' + uRange(o)) + '  ' + o.label + ' · ' + (o.model || devName(o)))}</option>`);
+    if (opts.length) groups.push(`<optgroup label="${esc(rr.name)}">${opts.join('')}</optgroup>`);
+  }
+  return `<div class="box patchbox">
+    <button class="btn pri full" data-act="pick">${isPhone() ? 'Tap' : 'Click'} the other port on the rack</button>
+    <div class="or"><span>or choose it</span></div>
+    <div class="g2"><label class="f"><span>Device</span><select id="ln-dev"><option value="">Choose a device…</option>${groups.join('')}</select></label><label class="f"><span>Port</span><select id="ln-port" disabled><option>Choose a device first</option></select></label></div>
+    ${pdata(d, pid).link ? '<div class="btns"><button class="btn sm" data-act="relinkno">Keep it as it is</button></div>' : ''}</div>`;
 }
+function portOptions(d, pid, o) { // the ports on o this port can patch to, free ones first
+  const k = portById(d, pid).kind, ps = portList(o).filter(q => canPatch(k, q.kind));
+  const free = ps.filter(q => !pdata(o, q.id).link), busy = ps.filter(q => pdata(o, q.id).link);
+  const opt = q => { const y = pdata(o, q.id); return `<option value="${q.id}">${esc(q.name)}${y.link ? ' · patched to ' + esc(portRef(y.link.d, y.link.p, false)) : y.ext ? ' · ' + esc(trunc(y.ext, 28)) : ' · free'}</option>`; };
+  return `<option value="">Choose a port…</option>${free.length ? `<optgroup label="Free">${free.map(opt).join('')}</optgroup>` : ''}${busy.length ? `<optgroup label="Already patched">${busy.map(opt).join('')}</optgroup>` : ''}`;
+}
+let relink = false;   // the port panel is changing an existing patch
 function portPanel(d, pid) {
   const p = portById(d, pid), x = pdata(d, pid), st = portStatus(d, pid), ps = portList(d), i = ps.findIndex(q => q.id === pid);
   const peer = x.link && devOf(x.link.d);
-  const devOpts = [];
-  for (const rr of P.racks) for (const o of orderedDevs(rr)) if (o.id !== d.id && portList(o).length) devOpts.push(`<option value="${o.id}">${esc(rr.name + ' / ' + o.label)}</option>`);
+  if (portPanel.key !== d.id + pid) { portPanel.key = d.id + pid; relink = false; }
   const isSwitch = CAT_BY[d.type]?.cat === 'network';
   return `<div class="ptitle"><span class="ico">${kitThumb(d.type)}</span><div><h2>${esc(d.label)} · port ${esc(p.name)}</h2><p>${KINDS[p.kind].name} · <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${STATUS[st].c};border:1px solid rgba(0,0,0,.3)"></span> ${STATUS[st].name}</p></div></div>
   <div class="btns" style="margin:-4px 0 10px"><button class="btn sm" data-act="back">← ${esc(d.label)}</button><span style="flex:1"></span><button class="btn sm" data-act="prevport" ${i <= 0 ? 'disabled' : ''}>‹ Prev</button><button class="btn sm" data-act="nextport" ${i >= ps.length - 1 ? 'disabled' : ''}>Next ›</button></div>
   <div class="sec">Connects to</div>
-  ${peer ? `<div class="link"><div class="grow"><b>${esc(portRef(x.link.d, x.link.p))}</b><small>${esc(pdata(peer, x.link.p).desc || pdata(peer, x.link.p).ext || '')}</small></div><button class="btn sm" data-act="gopeer">Go to</button><button class="btn sm danger" data-act="unlink">Unpatch</button></div>`
-  : `<div class="box"><div class="g2"><label class="f"><span>Device</span><select id="ln-dev"><option value="">Choose…</option>${devOpts.join('')}</select></label><label class="f"><span>Port</span><select id="ln-port"></select></label></div>
-     <div class="btns"><button class="btn pri" data-act="link">Patch</button><button class="btn" data-act="pick">Pick on the rack</button></div></div>`}
+  ${peer ? `<div class="link"><div class="grow"><b>${esc(portRef(x.link.d, x.link.p))}</b><small>${esc([x.cable, pdata(peer, x.link.p).desc || pdata(peer, x.link.p).ext].filter(Boolean).join(' · '))}</small></div><button class="btn sm" data-act="gopeer">Go to</button><button class="btn sm" data-act="relink">Change</button><button class="btn sm danger" data-act="unlink">Unpatch</button></div>` : ''}
+  ${!peer || relink ? patchPicker(d, pid) : ''}
   <div data-scope="port">
     ${fld(PASSIVE.has(CAT_BY[d.type]?.cat) ? 'Outlet / far end (field side)' : 'Outside connection', 'ext', x.ext, { ph: 'e.g. CAM-01 Car park, outlet 2.14', hint: 'What this port goes to outside the racks: a field device, floor outlet or another room.' })}
     ${fld('Description', 'desc', x.desc, { ph: 'What the port is for' })}
@@ -1088,7 +1120,8 @@ function hoverPort(d, pid) {
   const r = curRack(), o = devOf(x.link.d);
   if (hov && o && rackOf(o.id) === r && !leads) {
     const a = portCentre(r, d, pid), b = portCentre(r, o, x.link.p);
-    if (a && b) hov.innerHTML = `<path d="${leadPath(a, b)}" fill="none" stroke="#ffd54a" stroke-width="3" stroke-linecap="round"/>`;
+    if (a && b) hov.innerHTML = `<path d="${leadPath(a, b, pickChannel(leadChannels(r), a, b))}"
+ fill="none" stroke="#ffd54a" stroke-width="3" stroke-linecap="round"/>`;
   }
 }
 
@@ -1380,7 +1413,7 @@ function example() {
   const nvr = add('avg5-prm', 12, { label: 'NVR-01', ip: '10.10.30.10' });
   const kvm = add('kvm', 11);
   const icx1 = add('icx', 10, { side: 'left', model: 'ICX-500' }), icx2 = add('icx', 10, { side: 'right', model: 'ICX-500' });
-  add('blank', 9);
+  add('brush', 9);
   const acd = add('acm-drawer', 7, { label: 'ACD-01' });
   const acms = [['D01 Reception\nmain door', '10.10.40.21'], ['D02 Office\ncorridor', '10.10.40.22'], ['D03 Comms room', '10.10.40.23'], ['D04 Plant room', '10.10.40.24']].map(([tag, ip], i) => { const d = makeDev('ipacm', acd.u); Object.assign(d, { on: acd.id, slot: i + 1, tag, ip, label: 'ACM-0' + (i + 1) }); r.devices.push(d); reindex(); return d; });
   const sh = add('shelf', 5);
@@ -1443,6 +1476,7 @@ function stageAct(e, canDrag) {
     if (pick) {
       if (did === pick.d && pid === pick.p) { pick = null; render(); return; }
       const a = devOf(pick.d), x = pdata(d, pid);
+      if (!canPatch(portById(a, pick.p).kind, portById(d, pid).kind)) { toast(`${KINDS[portById(a, pick.p).kind].name} can't patch to ${KINDS[portById(d, pid).kind].name}. Choose one of the lit ports.`); return; }
       if (x.link && !confirm(`${d.label} port ${portById(d, pid).name} is already patched to ${portRef(x.link.d, x.link.p)}. Patch it here instead?`)) return;
       const kA = portById(a, pick.p).kind, kB = portById(d, pid).kind, fib = k => k === 'lc' || k === 'sc' || k.startsWith('sfp');
       change(() => link(a, pick.p, d, pid));
@@ -1564,8 +1598,12 @@ function moveDev(d, du) {
 
 function onPanelChange(e) {
   const t = e.target, k = t.dataset.k, scope = t.closest('[data-scope]')?.dataset.scope;
-  if (t.id === 'ln-dev') { const o = devOf(t.value), cur = devOf(sel.dev); $('#ln-port').innerHTML = o ? portList(o).map(p => { const x = pdata(o, p.id); return `<option value="${p.id}">${esc(p.name)}${x.link ? ' (patched)' : portStatus(o, p.id) !== 'free' ? ' (in use)' : ''}</option>`; }).join('') : ''; const first = o && portList(o).find(p => !pdata(o, p.id).link); if (first) $('#ln-port').value = first.id; return; }
-  if (t.id === 'bk-dev') { fillBulkTo(); return; }
+  if (t.id === 'ln-dev') { const o = devOf(t.value), lp = $('#ln-port'); lp.disabled = !o; lp.innerHTML = o ? portOptions(devOf(sel.dev), sel.port, o) : '<option>Choose a device first</option>'; if (o) lp.focus(); return; }
+  if (t.id === 'ln-port') { // choosing the port patches it
+    const d = devOf(sel.dev), o = devOf($('#ln-dev').value), op = t.value; if (!o || !op) return;
+    const y = pdata(o, op); if (y.link && !(y.link.d === d.id && y.link.p === sel.port) && !confirm(`${o.label} port ${portById(o, op).name} is already patched to ${portRef(y.link.d, y.link.p)}. Patch it here instead?`)) { t.value = ''; return; }
+    relink = false; change(() => link(d, sel.port, o, op)); toast('Patched ' + portRef(d.id, sel.port, false) + ' to ' + portRef(o.id, op, false)); return;
+  }
   if (t.dataset.pw) { // power inlet -> outlet
     const d = devOf(sel.dev), pid = t.dataset.pw;
     if (!t.value) { change(() => unlink(d, pid)); return; }
@@ -1693,27 +1731,13 @@ function onPanelClick(e) {
     case 'addgrp': change(() => { const used = portList(d).reduce((m, p) => Math.max(m, p.n), 0); d.groups.push(g('rj45', 4, { id: uid().slice(0, 4), order: 'row', start: used + 1 })); }); break;
     case 'delgrp': { const gid = b.closest('.grp').dataset.grp; if (Object.keys(d.ports).some(k => k.startsWith(gid + '-')) && !confirm('Remove these ports and their allocations?')) break; change(() => { d.groups = d.groups.filter(x => x.id !== gid); prune(d); }); break; }
     case 'clearports': if (confirm(`Clear every port allocation on ${d.label}?`)) change(() => { for (const k of Object.keys(d.ports)) unlink(d, k); d.ports = {}; }); break;
-    case 'bulk': {
-      const ps = portList(d), from = ps.findIndex(p => p.id === $('#bk-from').value), n = parseInt($('#bk-n').value, 10) || 0;
-      const o = devOf($('#bk-dev').value), ops = portList(o), to = ops.findIndex(p => p.id === $('#bk-to').value), vlan = $('#bk-vlan').value.trim();
-      const cnt = Math.min(n, ps.length - from, ops.length - to);
-      if (cnt < 1) { toast('Nothing to patch.'); break; }
-      const busy = []; for (let i = 0; i < cnt; i++) { const a = pdata(d, ps[from + i].id).link, bb = pdata(o, ops[to + i].id).link; if ((a && !(a.d === o.id && a.p === ops[to + i].id)) || (bb && !(bb.d === d.id && bb.p === ps[from + i].id))) busy.push(ps[from + i].name); }
-      if (busy.length && !confirm(`${busy.length} of these ports are already patched elsewhere. Re-patch them?`)) break;
-      change(() => { for (let i = 0; i < cnt; i++) { link(d, ps[from + i].id, o, ops[to + i].id); if (vlan) { setPort(d, ps[from + i].id, 'vlan', vlan); setPort(o, ops[to + i].id, 'vlan', vlan); } } });
-      toast(`Patched ${cnt} port${cnt > 1 ? 's' : ''}: ${d.label} ${ps[from].name}–${ps[from + cnt - 1].name} to ${o.label} ${ops[to].name}–${ops[to + cnt - 1].name}.`);
-      break;
-    }
+    case 'relink': relink = true; renderPanel(); break;
+    case 'relinkno': relink = false; renderPanel(); break;
     case 'back': sel.port = null; render(); break;
     case 'prevport': case 'nextport': { const ps = portList(d), i = ps.findIndex(p => p.id === sel.port) + (act === 'nextport' ? 1 : -1); if (ps[i]) { sel.port = ps[i].id; render(); } break; }
     case 'gopeer': { const x = pdata(d, sel.port).link; sel.rack = rackOf(x.d).id; sel.dev = x.d; sel.port = x.p; showFace(devOf(x.d), x.p); render(); break; }
     case 'unlink': change(() => unlink(d, sel.port)); break;
-    case 'link': {
-      const o = devOf($('#ln-dev').value), op = $('#ln-port').value; if (!o || !op) { toast('Choose a device and port.'); break; }
-      const x = pdata(o, op); if (x.link && !confirm(`${o.label} port ${portById(o, op).name} is already patched to ${portRef(x.link.d, x.link.p)}. Patch it here instead?`)) break;
-      change(() => link(d, sel.port, o, op)); break;
-    }
-    case 'pick': pick = { d: d.id, p: sel.port }; if (isPhone()) pane = 'rack'; render(); toast(isPhone() ? 'Tap the other port on the rack. Zoom in with + if the ports are small.' : 'Click a port on the rack. Esc to cancel.'); break;
+    case 'pick': pick = { d: d.id, p: sel.port }; relink = false; if (isPhone()) pane = 'rack'; render(); toast(isPhone() ? 'Tap the other port: the ones it can patch to are lit. Zoom in with + if they are small.' : 'Click the other port: the ones it can patch to are lit. Esc to cancel.'); break;
     case 'clearport': change(() => { unlink(d, sel.port); delete d.ports[sel.port]; }); break;
   }
 }
@@ -1778,8 +1802,7 @@ function init() {
   const pn = $('#panel');
   pn.addEventListener('change', onPanelChange);
   pn.addEventListener('click', onPanelClick);
-  pn.addEventListener('focusin', e => { if (e.target.id === 'bk-dev' || e.target.id === 'bk-to') { if (!$('#bk-to').options.length) fillBulkTo(); } });
-  new MutationObserver(() => { if ($('#bk-to') && !$('#bk-to').options.length) fillBulkTo(); }).observe(pn, { childList: true });
+
   const tb = $('#table');
   tb.addEventListener('input', e => { if (e.target.id === 'tq') { tq = e.target.value; const pos = e.target.selectionStart; renderTable(); const q = $('#tq'); q.focus(); q.setSelectionRange(pos, pos); } });
   tb.addEventListener('change', e => {

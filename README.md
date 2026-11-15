@@ -145,7 +145,7 @@ For each port you can record:
 
 | Field | What it is for |
 | --- | --- |
-| **Connects to** | Patch it to a port on any other device, in this rack or another. Choose the device and port from the lists, or press **Pick on the rack** and click the other end. **Go to** jumps to the far end, **Unpatch** removes the lead. |
+| **Connects to** | Patch it to a port on any other device, in this rack or another. Press **Click the other port on the rack**: the ports it can patch to light up and the rest fade out (power outlets only go to power inlets, data ports only to data ports). Or **choose it** from the lists: devices are grouped by rack with their U, and the ports list puts free ports first and says what the others are patched to. Choosing the port patches it straight away. Once patched, **Go to** jumps to the far end, **Change** picks a new far end and **Unpatch** removes the lead. |
 | **Outside connection** | Where the port goes beyond the racks: a camera, door controller, floor outlet or another room (for example `CAM-01 Car park, outlet 2.14`). |
 | **Description** | What the port is for. |
 | **VLAN** | The VLAN number or name. |
@@ -158,9 +158,11 @@ For each port you can record:
 
 **‹ Prev** and **Next ›** (or the left and right arrow keys) step through the device's ports so you can fill in a whole panel quickly.
 
-To save time on big jobs, a device's details have a **Patch ports** box that patches a run of ports straight across, for example patch panel ports 1–24 to switch ports 1–24, with an optional VLAN. You can also **Add ports** to any device (choosing type, count, prefix and first number) to match the real hardware.
+You can also **Add ports** to any device (choosing type, count, prefix and first number) to match the real hardware.
 
-Patch leads are drawn on the rack as coloured curves between the two ports. Turn them off with the **Patch leads** tick box when you only want to see the faces.
+Patch leads are drawn on the rack between the two ports. On the front, leads are dressed through the nearest cable manager or brush plate between the two ends: they drop into it, run along behind the rings or bristles, and come out to the other port, so the managers look in use. Leads with no manager near them hang in a curve. Turn the leads off with the **Patch leads** tick box when you only want to see the faces.
+
+![Patch leads run through a brush plate to the IP-ACMs](docs/screenshots/brush-plate.png)
 
 ### Hover pop-ups
 
@@ -329,7 +331,7 @@ The app is written as plain HTML, CSS and JavaScript in `src/`, with no framewor
 
 ```sh
 python3 -I build.py
-# built dist/system-draw-rack-designer.html 640807 bytes
+# built dist/system-draw-rack-designer.html 643170 bytes
 ```
 
 Python 3.8 or newer is all you need. GitHub Actions runs the build on every push to `main`, checks that the committed `dist/` file matches the source, and uploads the built page as a downloadable artifact.
